@@ -1,0 +1,24 @@
+# Local Screen Configuration
+# Copy this file to ~/.munin/screen.yaml on your device
+syntax: v1
+
+# Fullscreen tabs to display and cycle through
+tabs:
+  - url: "https://grafana.internal/d/local-stats"
+    duration: 45 # seconds
+    reload: true
+
+  - url: "https://weather.com/"
+    duration: 15
+    reload: false
+
+# TV Screen Power Scheduling via HDMI CEC (cec-utils)
+power:
+  turn_on: "0 7 * * 1-5"   # Turn on Monday to Friday at 07:00
+  turn_off: "0 19 * * 1-5" # Standby Monday to Friday at 19:00
+  cec_device: 0            # Default CEC target (0 for TV)
+
+# Native Raspberry Pi crontab jobs
+jobs:
+  - when: "0 3 * * *"
+    command: "sudo reboot"

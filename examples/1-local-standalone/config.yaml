@@ -1,0 +1,15 @@
+# Local Standalone Node Configuration
+# Copy this file to ~/.munin/config.yaml on your device
+mode: "local"
+log_level: "info" # "debug", "info", "warn", "error"
+
+# Path to the screen configuration file on this node
+screen_path: "~/.munin/screen.yaml"
+
+# Auto-update binary from GitHub Releases
+update:
+  enabled: true
+  schedule: "0 4 * * *" # Daily at 4:00 AM
+
+display:
+  env: ":0"

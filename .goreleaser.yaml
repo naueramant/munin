@@ -1,0 +1,18 @@
+version: 2
+
+builds:
+  - id: munin
+    binary: munin
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm
+      - arm64
+    goarm:
+      - 6
+      - 7
+    ldflags:
+      - -s -w -X github.com/naueramant/munin/internal/updater.CurrentVersion={{.Version}}

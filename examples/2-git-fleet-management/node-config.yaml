@@ -1,0 +1,35 @@
+# Fleet Node Configuration
+# Copy this file to ~/.munin/config.yaml on the specific Raspberry Pi
+mode: "git"
+log_level: "info"
+
+git:
+  # Central fleet repository URL
+  repo: "git@github.com:myorg/office-screens.git"
+  
+  # SSH deploy key for read-only access (defaults to auto-discovering ~/.ssh/id_munin_deploy)
+  deploy_key: "~/.ssh/id_munin_deploy"
+  
+  # Git branch to track
+  branch: "main"
+  
+  # Each Raspberry Pi points to its assigned subdirectory in the repository!
+  # Examples: "screens/office-lobby", "screens/ops-dashboard", "screens/canteen"
+  subdir: "screens/office-lobby"
+  
+  # How often to check for Git updates (standard 5-part cron syntax)
+  # "* * * * *" = every minute
+  # "*/5 * * * *" = every 5 minutes
+  schedule: "* * * * *"
+  
+  # Local cache directory on the Raspberry Pi
+  target_dir: "~/.munin/repo"
+
+# Auto-update binary from GitHub Releases
+update:
+  enabled: true
+  repo: "naueramant/munin"
+  schedule: "0 4 * * *" # Daily at 4:00 AM
+
+display:
+  env: ":0"

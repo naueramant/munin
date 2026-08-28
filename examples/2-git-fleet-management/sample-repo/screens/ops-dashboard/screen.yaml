@@ -1,0 +1,26 @@
+syntax: v1
+
+# Fullscreen tabs for NOC / Operations room
+tabs:
+  - url: "https://grafana.internal/d/fleet-metrics?kiosk"
+    duration: 60
+    reload: true
+  - url: "https://status.datadoghq.com/"
+    duration: 30
+
+# Power schedule
+power:
+  turn_on: "0 6 * * 1-5"   # Turn on early Mon-Fri at 06:00
+  turn_off: "0 22 * * 1-5"  # Turn off at 22:00
+  cec_device: 0
+
+# Scheduled jobs installed into native crontab
+jobs:
+  - when: "*/15 * * * *"
+    command: "/home/pi/scripts/healthcheck.sh"
+
+# Sync healthcheck script and ensure executable permissions
+files:
+  - src: "healthcheck.sh"
+    dest: "/home/pi/scripts/healthcheck.sh"
+    mode: "0755"

@@ -1,0 +1,22 @@
+syntax: v1
+
+# Fullscreen tabs to display in reception lobby
+tabs:
+  - url: "https://welcome.company.com/"
+    duration: 30
+    reload: true
+    css: "custom.css"
+  - url: "https://calendar.google.com/calendar/embed?src=company_events"
+    duration: 20
+
+# HDMI CEC screen power scheduling
+power:
+  turn_on: "0 7 * * 1-5"   # Turn on Mon-Fri at 7:00 AM
+  turn_off: "0 19 * * 1-5" # Turn off Mon-Fri at 7:00 PM
+  cec_device: 0
+
+# Sync shared branding asset to local filesystem
+files:
+  - src: "../../shared/logo.svg"
+    dest: "/home/pi/assets/logo.svg"
+    mode: "0644"

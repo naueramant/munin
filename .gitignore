@@ -1,0 +1,18 @@
+
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+./*.yaml
+./*.yml
+*packr.go
+main
+dist/
+
+# Test assets
+*.js
+*.css
