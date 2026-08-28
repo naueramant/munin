@@ -3,7 +3,10 @@ package doctor
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -30,9 +33,69 @@ func checkDependencies() []CheckResult {
 	return results
 }
 
+// getChromiumCandidates returns candidate executable names and paths to search
+// for Chromium-compatible browsers, aligned with chromedp's locator logic and standard distro paths.
+func getChromiumCandidates() []string {
+	var candidates []string
+
+	// 1. Explicit environment variable overrides
+	for _, env := range []string{"CHROME_BIN", "CHROMIUM_PATH"} {
+		if val := os.Getenv(env); val != "" {
+			candidates = append(candidates, val)
+		}
+	}
+
+	switch runtime.GOOS {
+	case "darwin":
+		candidates = append(candidates,
+			"chromium",
+			"google-chrome",
+			"/Applications/Chromium.app/Contents/MacOS/Chromium",
+			"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+			"/Applications/Google Chrome Beta.app/Contents/MacOS/Google Chrome Beta",
+			"/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+		)
+	case "windows":
+		candidates = append(candidates,
+			"chrome",
+			"chrome.exe",
+			filepath.Join(os.Getenv("ProgramFiles"), `Google\Chrome\Application\chrome.exe`),
+			filepath.Join(os.Getenv("ProgramFiles(x86)"), `Google\Chrome\Application\chrome.exe`),
+			filepath.Join(os.Getenv("LOCALAPPDATA"), `Google\Chrome\Application\chrome.exe`),
+			filepath.Join(os.Getenv("LOCALAPPDATA"), `Chromium\Application\chrome.exe`),
+		)
+	default:
+		// Unix-like / Linux:
+		// Aligned with and extends chromedp's search locations so doctor reflects actual runtime availability.
+		candidates = append(candidates,
+			"chromium-browser",
+			"chromium",
+			"google-chrome-stable",
+			"google-chrome",
+			"google-chrome-beta",
+			"google-chrome-unstable",
+			"chrome",
+			"/usr/bin/google-chrome-stable",
+			"/usr/bin/google-chrome",
+			"/usr/bin/chromium",
+			"/usr/bin/chromium-browser",
+			"/snap/bin/chromium",
+			"/snap/bin/chromium-browser",
+			"/var/lib/snapd/snap/bin/chromium",
+			"/usr/local/bin/chrome",
+			"headless_shell",
+			"headless-shell",
+		)
+	}
+
+	return candidates
+}
+
 func checkChromium() CheckResult {
-	candidates := []string{"chromium-browser", "chromium", "google-chrome"}
-	for _, bin := range candidates {
+	for _, bin := range getChromiumCandidates() {
+		if bin == "" {
+			continue
+		}
 		path, err := exec.LookPath(bin)
 		if err == nil {
 			version := getBinaryVersion(path, "--version")
@@ -49,8 +112,8 @@ func checkChromium() CheckResult {
 		Category: CategoryDependencies,
 		Name:     "Chromium Browser",
 		Status:   StatusError,
-		Message:  "Chromium browser not found in PATH",
-		FixHint:  "Install Chromium browser: sudo apt-get install -y chromium-browser || sudo apt-get install -y chromium",
+		Message:  "Chromium browser not found in PATH or standard locations",
+		FixHint:  "Install Chromium browser: sudo apt-get install -y chromium-browser || sudo apt-get install -y chromium (or google-chrome-stable)",
 	}
 }
 

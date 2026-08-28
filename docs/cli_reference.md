@@ -89,7 +89,7 @@ munin doctor [flags]
 | `--config` | string | `""` | Path to screen configuration to validate |
 
 ### Diagnostic Checks Performed:
-- **Dependencies**: Presence of Chromium browser (`chromium-browser`, `chromium`, `google-chrome`), `cec-client`, `crontab`, `unclutter`, and `ssh`.
+- **Dependencies**: Presence of Chromium/Chrome browser (`chromium-browser`, `chromium`, `google-chrome-stable`, `google-chrome`, or custom `$CHROME_BIN`), `cec-client`, `crontab`, `unclutter`, and `ssh`.
 - **Systemd & Services**: User systemd manager responsiveness, `munin.service` unit presence and active status, systemd user lingering (`loginctl enable-linger`), and host `cron` daemon status.
 - **Hardware & Display**: `$DISPLAY` / `$WAYLAND_DISPLAY` accessibility, user membership in `video`, `render`, and `input` groups, and `/dev/cec*` / `/dev/vchiq` device access.
 - **Configuration & Crontab**: YAML syntax validation, tab URL validity, cron schedule syntax, and inspection of active Munin crontab entries.

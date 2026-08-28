@@ -227,3 +227,39 @@ func TestDeployKeyPermissionsFix(t *testing.T) {
 		t.Errorf("expected permissions 0600, got %#o", fi.Mode().Perm())
 	}
 }
+
+func TestGetChromiumCandidates(t *testing.T) {
+	candidates := getChromiumCandidates()
+	if len(candidates) == 0 {
+		t.Fatal("expected at least one candidate browser")
+	}
+
+	foundChromeStable := false
+	for _, c := range candidates {
+		if c == "google-chrome-stable" {
+			foundChromeStable = true
+			break
+		}
+	}
+	if !foundChromeStable {
+		t.Errorf("expected google-chrome-stable to be in candidate list, got %v", candidates)
+	}
+
+	// Test CHROME_BIN override
+	t.Setenv("CHROME_BIN", "/custom/bin/my-chrome")
+	candidatesWithEnv := getChromiumCandidates()
+	if len(candidatesWithEnv) == 0 || candidatesWithEnv[0] != "/custom/bin/my-chrome" {
+		t.Errorf("expected /custom/bin/my-chrome as first candidate, got %v", candidatesWithEnv)
+	}
+}
+
+func TestCheckChromium(t *testing.T) {
+	result := checkChromium()
+	if result.Category != CategoryDependencies {
+		t.Errorf("expected CategoryDependencies, got %s", result.Category)
+	}
+	if result.Name != "Chromium Browser" {
+		t.Errorf("expected 'Chromium Browser', got %s", result.Name)
+	}
+}
+

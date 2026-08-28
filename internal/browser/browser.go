@@ -33,6 +33,12 @@ func NewBrowser(extraFlags ...string) *Browser {
 		chromedp.Flag("incognito", true),
 	)
 
+	if customPath := os.Getenv("CHROME_BIN"); customPath != "" {
+		opts = append(opts, chromedp.ExecPath(customPath))
+	} else if customPath := os.Getenv("CHROMIUM_PATH"); customPath != "" {
+		opts = append(opts, chromedp.ExecPath(customPath))
+	}
+
 	for _, flag := range extraFlags {
 		opts = append(opts, chromedp.Flag(flag, true))
 	}

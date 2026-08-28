@@ -54,8 +54,8 @@ if command -v apt-get &>/dev/null; then
         fonts-liberation \
         fonts-noto-color-emoji || true
 
-    # Chromium browser (package name varies between Debian/Raspberry Pi OS releases)
-    if ! command -v chromium-browser &>/dev/null && ! command -v chromium &>/dev/null; then
+    # Chromium / Chrome browser (package name varies between Debian/Raspberry Pi OS releases)
+    if ! command -v chromium-browser &>/dev/null && ! command -v chromium &>/dev/null && ! command -v google-chrome &>/dev/null && ! command -v google-chrome-stable &>/dev/null; then
         echo "Installing Chromium browser..."
         sudo apt-get install -y chromium-browser || sudo apt-get install -y chromium || true
     fi
