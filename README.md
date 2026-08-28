@@ -4,8 +4,6 @@
 
 *Named after Munin ("memory"), the raven of Odin that flies across the world to bring back information.*
 
-[![CI](https://github.com/naueramant/munin/actions/workflows/ci.yaml/badge.svg)](https://github.com/naueramant/munin/actions/workflows/ci.yaml)
-[![Release](https://github.com/naueramant/munin/actions/workflows/release.yaml/badge.svg)](https://github.com/naueramant/munin/actions/workflows/release.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Munin displays, cycles, and manages fullscreen web dashboards (Grafana, Datadog, internal metrics) on Raspberry Pi displays and Linux kiosks. It runs securely under an unprivileged user session, automatically tracks a remote Git repository or local YAML file, and controls TV power via native HDMI CEC and crontab.
