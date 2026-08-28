@@ -2,6 +2,7 @@ package wizard
 
 import (
 	"bufio"
+	_ "embed"
 	"fmt"
 	"os"
 	"os/exec"
@@ -11,6 +12,16 @@ import (
 	"github.com/naueramant/munin/internal/utils"
 	yaml "gopkg.in/yaml.v2"
 )
+
+//go:embed templates/munin.service
+var defaultServiceTemplate []byte
+
+//go:embed templates/agent.yaml
+var defaultAgentTemplate []byte
+
+//go:embed templates/screen.yaml
+var defaultScreenTemplate []byte
+
 
 // Run executes the interactive setup wizard.
 func Run() error {
@@ -23,7 +34,7 @@ func Run() error {
 	isTTY := (stat.Mode() & os.ModeCharDevice) != 0
 
 	configDir := utils.ExpandHome("~/.munin")
-	configFile := filepath.Join(configDir, "config.yaml")
+	configFile := filepath.Join(configDir, "agent.yaml")
 
 	if !isTTY {
 		fmt.Println("Non-interactive environment detected. Creating standard starter configuration...")
@@ -104,10 +115,10 @@ func Run() error {
 
 	updateSchedule := "0 4 * * *"
 	if updateEnabled {
-		updateSchedule = prompt(reader, "Auto-update cron schedule (0 4 * * * = daily at 4:00 AM)", "0 4 * * *")
+		updateSchedule = prompt(reader, "Auto-update cron schedule (0 4 * * * = daily at 04:00)", "0 4 * * *")
 	}
 
-	// Write ~/.munin/config.yaml
+	// Write ~/.munin/agent.yaml
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
@@ -232,24 +243,7 @@ func writeSampleScreenYAML(dest string) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-
-	sample := `syntax: v1
-
-# Fullscreen tabs to display and cycle through
-tabs:
-  - url: "https://grafana.internal/d/overview"
-    duration: 30
-    reload: true
-  - url: "https://weather.com/"
-    duration: 15
-
-# HDMI CEC screen power scheduling (cec-utils)
-power:
-  turn_on: "0 7 * * 1-5"   # Turn on Monday to Friday at 07:00
-  turn_off: "0 19 * * 1-5" # Standby Monday to Friday at 19:00
-  cec_device: 0
-`
-	return os.WriteFile(dest, []byte(sample), 0644)
+	return os.WriteFile(dest, defaultScreenTemplate, 0644)
 }
 
 func installSystemdUserService() error {
@@ -258,24 +252,8 @@ func installSystemdUserService() error {
 		return err
 	}
 
-	serviceContent := `[Unit]
-Description=Munin Screen Agent
-After=graphical-session.target network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-Environment=DISPLAY=:0
-ExecStart=/usr/local/bin/munin
-Restart=always
-RestartSec=5s
-LimitNOFILE=65536
-
-[Install]
-WantedBy=default.target
-`
 	servicePath := filepath.Join(userServiceDir, "munin.service")
-	if err := os.WriteFile(servicePath, []byte(serviceContent), 0644); err != nil {
+	if err := os.WriteFile(servicePath, defaultServiceTemplate, 0644); err != nil {
 		return err
 	}
 
@@ -298,20 +276,15 @@ func createDefaultConfig(dest string) error {
 		return err
 	}
 
-	starter := `# Munin Agent Configuration
-mode: "local"
-log_level: "info"
-screen_path: "~/.munin/screen.yaml"
+	if err := os.WriteFile(dest, defaultAgentTemplate, 0644); err != nil {
+		return err
+	}
 
-update:
-  enabled: true
-  repo: "naueramant/munin"
-  schedule: "0 4 * * *"
-
-display:
-  env: ":0"
-`
-	return os.WriteFile(dest, []byte(starter), 0644)
+	screenDest := filepath.Join(dir, "screen.yaml")
+	if _, err := os.Stat(screenDest); os.IsNotExist(err) {
+		return writeSampleScreenYAML(screenDest)
+	}
+	return nil
 }
 
 func printBanner() {

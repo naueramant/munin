@@ -1,0 +1,13 @@
+syntax: v1
+
+# Fullscreen tabs to display and cycle through
+# tabs:
+#   - url: "https://xkcd.com/"
+
+# HDMI CEC screen power & system scheduling (cec-utils)
+# power:
+#   screen_on: "0 7 * * 1-5"   # Turn on Monday to Friday at 07:00 (or "07:00")
+#   screen_off: "0 19 * * 1-5" # Standby Monday to Friday at 19:00 (or "19:00")
+#   reboot: "0 3 * * *"        # Nightly reboot at 03:00 (or "03:00")
+#   power_off: ""              # Optional shutdown schedule
+#   cec_device: 0              # Optional CEC target (defaults to 0 for TV)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/naueramant/munin/internal/assets"
@@ -17,7 +18,9 @@ type BrowserManager struct {
 	Config       *config.Configuration
 	AssetsServer *assets.Server
 	BaseDir      string
+	extraFlags   []string
 
+	mu     sync.Mutex
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -25,10 +28,11 @@ type BrowserManager struct {
 func NewBrowserManager(c *config.Configuration, as *assets.Server, baseDir string, extraFlags ...string) *BrowserManager {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	bm := BrowserManager{
+	bm := &BrowserManager{
 		Config:       c,
 		AssetsServer: as,
 		BaseDir:      baseDir,
+		extraFlags:   extraFlags,
 		ctx:          ctx,
 		cancel:       cancel,
 	}
@@ -36,11 +40,53 @@ func NewBrowserManager(c *config.Configuration, as *assets.Server, baseDir strin
 	slog.Debug("Spawning chromium browser")
 	bm.Browser = NewBrowser(extraFlags...)
 
-	if len(c.Tabs) == 0 {
-		return &bm
+	return bm
+}
+
+func (bm *BrowserManager) Start() {
+	bm.ApplyConfig(bm.Config)
+}
+
+func (bm *BrowserManager) ApplyConfig(c *config.Configuration) {
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
+
+	// Cancel previous cycling loop
+	if bm.cancel != nil {
+		bm.cancel()
+	}
+	bm.ctx, bm.cancel = context.WithCancel(context.Background())
+	bm.Config = c
+
+	// Ensure browser is running
+	if bm.Browser == nil || bm.Browser.Context == nil || bm.Browser.Context.Err() != nil {
+		slog.Debug("Spawning chromium browser")
+		bm.Browser = NewBrowser(bm.extraFlags...)
 	}
 
-	for _, tabCon := range c.Tabs {
+	// Close existing tabs cleanly
+	tabsToClose := make([]*Tab, len(bm.Browser.Tabs))
+	copy(tabsToClose, bm.Browser.Tabs)
+	for _, t := range tabsToClose {
+		if t.Close != nil {
+			t.Close()
+		}
+	}
+	bm.Browser.Tabs = nil
+
+	if bm.Config == nil || bm.Config.Syntax == "" {
+		bm.showNotConfiguredScreen()
+		slog.Warn("No configuration syntax found")
+		return
+	}
+
+	if len(bm.Config.Tabs) == 0 {
+		bm.showNotConfiguredScreen()
+		slog.Warn("No tabs configured")
+		return
+	}
+
+	for _, tabCon := range bm.Config.Tabs {
 		tab := bm.Browser.NewTab()
 
 		if tabCon.Auth.Username != "" && tabCon.Auth.Password != "" {
@@ -60,29 +106,16 @@ func NewBrowserManager(c *config.Configuration, as *assets.Server, baseDir strin
 
 	if len(bm.Browser.Tabs) > 0 {
 		bm.Browser.Tabs[0].Focus()
-		slog.Debug("Initialized tabs", "count", len(c.Tabs))
+		slog.Debug("Initialized tabs", "count", len(bm.Config.Tabs))
 	}
 
-	return &bm
-}
-
-func (bm *BrowserManager) Start() {
-	if bm.Config.Syntax == "" {
-		bm.showNoConfigScreen()
-		slog.Warn("No configuration syntax found")
-		return
-	}
-
-	if len(bm.Config.Tabs) == 0 {
-		bm.showNoTabsScreen()
-		slog.Warn("No tabs configured")
-		return
-	}
-
-	bm.startCycle(bm.ctx)
+	go bm.startCycle(bm.ctx)
 }
 
 func (bm *BrowserManager) Close() {
+	bm.mu.Lock()
+	defer bm.mu.Unlock()
+
 	slog.Debug("Closing browser")
 	if bm.cancel != nil {
 		bm.cancel()
@@ -120,23 +153,11 @@ func (bm *BrowserManager) applyTabExtras(t *Tab, tc config.Tab) {
 	}
 }
 
-func (bm *BrowserManager) showNoTabsScreen() {
+func (bm *BrowserManager) showNotConfiguredScreen() {
 	t := bm.Browser.NewTab()
 
 	url := fmt.Sprintf(
-		"%s/static/notabs.html?ip=%s",
-		bm.AssetsServer.Host(),
-		utils.GetLocalIp(),
-	)
-
-	t.Navigate(url)
-}
-
-func (bm *BrowserManager) showNoConfigScreen() {
-	t := bm.Browser.NewTab()
-
-	url := fmt.Sprintf(
-		"%s/static/noconfig.html?ip=%s",
+		"%s/static/not_configured.html?ip=%s",
 		bm.AssetsServer.Host(),
 		utils.GetLocalIp(),
 	)
@@ -145,6 +166,10 @@ func (bm *BrowserManager) showNoConfigScreen() {
 }
 
 func (bm *BrowserManager) startCycle(ctx context.Context) {
+	if len(bm.Browser.Tabs) == 0 {
+		return
+	}
+
 	for {
 		for i, tab := range bm.Browser.Tabs {
 			select {

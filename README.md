@@ -8,164 +8,91 @@
 [![Release](https://github.com/naueramant/munin/actions/workflows/release.yaml/badge.svg)](https://github.com/naueramant/munin/actions/workflows/release.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
----
-
-## Features
-
-- **Fullscreen Chromium Kiosk**: Display and automatically cycle between multiple web tabs (e.g. Grafana, Datadog, internal dashboards).
-- **Runs Securely as User**: Runs under the desktop user account (e.g. `pi`) via systemd user service (`systemctl --user`), without root permissions.
-- **Git Fleet Synchronization**: Auto-sync configuration and assets from a Git repository with offline caching and automatic SSH deploy key discovery.
-- **Sane Defaults**: Minimal configuration required out-of-the-box — just set your Git repo and subdirectory.
-- **Local Standalone Mode**: Run directly from a local `screen.yaml` file without Git.
-- **Native Raspberry Pi Cron**: Recurring jobs and screen power schedules are managed directly in the host's native `crontab`.
-- **HDMI CEC Screen Power**: Power TVs on/off and switch active HDMI inputs automatically using `cec-utils`.
-- **Local File Synchronization**: Copy scripts, configs, and assets from your Git repo to the host filesystem with SD-card flash wear prevention.
-- **Automatic Agent Updates**: Built-in auto-updater downloads and applies new releases directly from GitHub Releases on your schedule.
-- **Structured Logging (`slog`)**: Clean, configurable log levels (`debug`, `info`, `warn`, `error`) that stay quiet during normal operations.
-- **One-Line Installer**: Single command install script tailored for Raspberry Pi OS.
+Munin displays, cycles, and manages fullscreen web dashboards (Grafana, Datadog, internal metrics) on Raspberry Pi displays and Linux kiosks. It runs securely under an unprivileged user session, automatically tracks a remote Git repository or local YAML file, and controls TV power via native HDMI CEC and crontab.
 
 ---
 
-## Quick Start (Raspberry Pi)
+## Get Started
 
-Install Munin and all system prerequisites (`chromium`, `cec-utils`, `cron`, `unclutter`) on Raspberry Pi OS with a single command:
+### 1. Install
+
+Install Munin and all system dependencies (`chromium`, `cec-utils`, `cron`, `unclutter`) with a single command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/naueramant/munin/master/install.sh | bash
 ```
 
-The installer downloads dependencies, installs the `munin` binary, and automatically launches the interactive **`munin init`** setup wizard!
+The installer downloads dependencies, installs the binary to `/usr/local/bin/munin`, and automatically launches the interactive **`munin init`** setup wizard.
 
-You can also run or re-run the wizard manually anytime:
+### 2. Interactive Setup Wizard
+
+Configure your display or connect to a Git fleet repository anytime:
+
 ```bash
 munin init
 ```
 
-Control Munin as a regular user via systemd:
-```bash
-# Check status
-systemctl --user status munin
+### 3. Service Control
 
-# Stream live logs
+Munin runs securely as a systemd user service:
+
+```bash
+# Check service status & live logs
+systemctl --user status munin
 journalctl --user -u munin -f
 
-# Restart or stop
+# Start, stop, or restart
 systemctl --user restart munin
 ```
 
----
+### 4. Diagnostics & Health Check
 
-## Configuration Overview
+Verify dependencies, permissions, display variables, and configurations:
 
-Munin is built with **sane defaults** so you only configure what you need:
-
-### 1. Host Agent Config (`~/.munin/config.yaml`)
-
-```yaml
-# ~/.munin/config.yaml
-git:
-  repo: "git@github.com:myorg/dashboards.git"
-  subdir: "screens/lobby"
+```bash
+munin doctor         # Run diagnostic checks
+munin doctor --fix   # Automatically resolve common issues (lingering, permissions)
 ```
 
-*(Defaults automatically applied: `branch: main`, `schedule: "* * * * *"` (every minute), `target_dir: ~/.munin/repo`, auto-discovered SSH keys from `~/.ssh`, and daily update checks at 4:00 AM).*
+### 5. Running Locally (Without Git)
 
-#### Summary Configuration Options Table:
-| Option | Default | Description |
-| :--- | :--- | :--- |
-| `mode` | `"git"` / `"local"` | Operating mode (auto-detected) |
-| `log_level` | `"info"` | Log level: `debug`, `info`, `warn`, `error` |
-| `git.repo` | *Required in git mode* | Git repository clone URL |
-| `git.branch` | `"main"` | Branch to track |
-| `git.subdir` | `""` (root) | Subfolder containing `screen.yaml` |
-| `git.schedule` | `"* * * * *"` | Cron expression for Git sync (e.g. `"* * * * *"`, `"*/5 * * * *"`) |
-| `git.deploy_key` | Auto-detected | Path to SSH private key |
-| `update.enabled` | `true` | Automatic GitHub release updates |
-| `update.schedule` | `"0 4 * * *"` | Cron expression for update check (daily at 4:00 AM) |
-
-*See [docs/configuration.md](docs/configuration.md) for the complete reference table.*
-
----
-
-### 2. Screen Config (`screen.yaml`)
-Defined in your Git repository's `subdir` (or local file):
-
-```yaml
-syntax: v1
-
-# Fullscreen tabs to cycle through (defaults to 30s rotation)
-tabs:
-  - url: "https://grafana.internal/d/lobby"
-    duration: 60
-    reload: true
-  - url: "https://xkcd.com/"
-    duration: 15
-
-# HDMI CEC screen power management (cec-utils)
-power:
-  turn_on: "0 7 * * 1-5"   # Turn on Mon-Fri 07:00
-  turn_off: "0 19 * * 1-5" # Standby Mon-Fri 19:00
-
-# Native cron jobs
-jobs:
-  - when: "0 3 * * *"
-    command: "sudo reboot"
-
-# Files to copy to the local host filesystem
-files:
-  - src: "scripts/check.sh"
-    dest: "/home/pi/scripts/check.sh"
-    mode: "0755"
-```
-
----
-
-## Running in Local Mode (Without Git)
-
-You can run Munin directly with a local configuration file:
+Run Munin directly against a local screen configuration file:
 
 ```bash
 munin --config /path/to/screen.yaml
 ```
 
-Whenever `/path/to/screen.yaml` is modified, Munin automatically synchronizes files, updates crontab/CEC, and refreshes the browser tabs.
-
 ---
 
-## Documentation
+## Documentation Overview
 
-Full documentation is available in the [docs/](docs/) directory:
+Comprehensive documentation is available in the [`docs/`](docs/) directory:
 
-- [Getting Started & Installation Guide](docs/getting_started.md)
-- [Configuration Reference (~/.munin/config.yaml & screen.yaml)](docs/configuration.md)
-- [Git Synchronization & Fleet Management](docs/git_sync.md)
-- [Screen Power (HDMI CEC) & Native Cron](docs/cron_and_power.md)
-- [Automatic Agent Updates](docs/auto_update.md)
+| Guide | Description |
+| :--- | :--- |
+| **[Getting Started](docs/getting_started.md)** | Step-by-step installation, setup wizard walkthrough, user service setup, and uninstallation |
+| **[Configuration Reference](docs/configuration.md)** | Full YAML schema and reference tables for `~/.munin/agent.yaml` and `screen.yaml` |
+| **[Git Sync & Fleet Management](docs/git_sync.md)** | Managing multi-screen fleets from a single repository with SSH deploy keys and offline caching |
+| **[Screen Power & Native Cron](docs/cron_and_power.md)** | HDMI CEC display power control (`cec-utils`), scheduled reboots, and post-reboot standby recovery |
+| **[Automatic Updates](docs/auto_update.md)** | Scheduled background updates directly from GitHub Releases |
+| **[CLI Reference](docs/cli_reference.md)** | Complete reference for all CLI subcommands (`init`, `doctor`, `power-check`, `remove`) and flags |
+| **[Examples & Architecture](examples/)** | Ready-to-use sample configs for standalone nodes and multi-screen Git fleets |
 
 ---
 
 ## Building from Source
 
-Requirements: Go 1.23+ and `golangci-lint`.
+Requirements: Go 1.23+
 
 ```bash
 git clone https://github.com/naueramant/munin.git
 cd munin
 go build -v .
-```
-
-Run tests:
-```bash
-go test -v -race ./...
-```
-
-Run linter:
-```bash
-golangci-lint run ./...
+go test -v ./...
 ```
 
 ---
 
 ## License
 
-Munin is licensed under the [MIT License](LICENSE).
+Munin is open source software licensed under the [MIT License](LICENSE).

@@ -1,11 +1,11 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/naueramant/munin/internal/utils"
-	"github.com/pkg/errors"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -15,12 +15,12 @@ func Load(filename string) (*Configuration, error) {
 
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		return &c, errors.Wrap(err, "Failed to load configuration file")
+		return &c, fmt.Errorf("failed to load configuration file: %w", err)
 	}
 
 	err = yaml.Unmarshal(data, &c)
 	if err != nil {
-		return &c, errors.Wrap(err, "Failed to unmarshal configuration file")
+		return &c, fmt.Errorf("failed to unmarshal configuration file: %w", err)
 	}
 
 	// Sane defaults
@@ -39,24 +39,24 @@ func Load(filename string) (*Configuration, error) {
 
 	err = Validate(c)
 	if err != nil {
-		return &c, errors.Wrap(err, "Configuration file invalid")
+		return &c, fmt.Errorf("configuration file invalid: %w", err)
 	}
 
 	return &c, nil
 }
 
-// LoadAgentConfig loads an agent configuration file from explicit path or default ~/.munin/config.yaml.
+// LoadAgentConfig loads an agent configuration file from explicit path or default ~/.munin/agent.yaml.
 func LoadAgentConfig(explicitPath string) (*AgentConfig, error) {
 	var targetPath string
 
 	if explicitPath != "" {
 		expanded := utils.ExpandHome(explicitPath)
 		if _, err := os.Stat(expanded); err != nil {
-			return nil, errors.Wrapf(err, "agent config file not found at %s", explicitPath)
+			return nil, fmt.Errorf("agent config file not found at %s: %w", explicitPath, err)
 		}
 		targetPath = expanded
 	} else {
-		defaultPath := utils.ExpandHome("~/.munin/config.yaml")
+		defaultPath := utils.ExpandHome("~/.munin/agent.yaml")
 		if _, err := os.Stat(defaultPath); err != nil {
 			return nil, os.ErrNotExist
 		}
@@ -65,12 +65,12 @@ func LoadAgentConfig(explicitPath string) (*AgentConfig, error) {
 
 	data, err := os.ReadFile(targetPath)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to read agent config from %s", targetPath)
+		return nil, fmt.Errorf("failed to read agent config from %s: %w", targetPath, err)
 	}
 
 	var cfg AgentConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, errors.Wrapf(err, "failed to parse agent config from %s", targetPath)
+		return nil, fmt.Errorf("failed to parse agent config from %s: %w", targetPath, err)
 	}
 
 	applyAgentConfigDefaults(&cfg)

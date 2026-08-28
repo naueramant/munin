@@ -91,10 +91,11 @@ func (s *Syncer) Sync() (bool, string, error) {
 		return false, "", fmt.Errorf("failed to open local repository at %s: %w", s.cfg.TargetDir, err)
 	}
 
-	// Fetch remote
+	// Fetch remote with shallow depth (Depth: 1)
 	remoteBranchRef := plumbing.ReferenceName(fmt.Sprintf("refs/remotes/origin/%s", s.cfg.Branch))
 	err = repo.Fetch(&git.FetchOptions{
 		Auth:     s.auth,
+		Depth:    1,
 		Force:    true,
 		Progress: nil,
 	})

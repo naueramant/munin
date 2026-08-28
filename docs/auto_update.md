@@ -1,12 +1,12 @@
 # Automatic Agent Updates
 
-Munin includes a built-in auto-update engine that can check GitHub Releases, download updated binaries matching the Raspberry Pi's CPU architecture, and atomically replace the running executable.
+Munin includes a built-in auto-update engine that checks GitHub Releases, downloads updated binaries matching the host CPU architecture, and atomically replaces the running executable.
 
 ---
 
 ## Configuration
 
-In `~/.munin/config.yaml`:
+In `~/.munin/agent.yaml`:
 
 ```yaml
 update:
@@ -18,14 +18,14 @@ update:
 
   # Schedule when to check for updates using standard 5-part cron syntax
   # Examples:
-  # - "0 4 * * *" (daily at 4:00 AM - default)
-  # - "0 4 * * 1" (every Monday at 4:00 AM)
+  # - "0 4 * * *" (daily at 04:00 - default)
+  # - "0 4 * * 1" (every Monday at 04:00)
   schedule: "0 4 * * *"
 ```
 
 You can also override this from the command line:
 ```bash
-# Check daily at 3:30 AM
+# Check daily at 03:30
 munin --update-schedule "30 3 * * *"
 ```
 
@@ -40,7 +40,7 @@ update:
 ## How It Works
 
 1. **Scheduled Release Check**:
-   - The agent queries `https://api.github.com/repos/{owner}/{repo}/releases/latest` according to your configured `when` time or `interval`.
+   - The agent queries `https://api.github.com/repos/{owner}/{repo}/releases/latest` according to your configured `schedule` cron expression.
    - It compares the latest release tag (e.g. `v1.2.0`) with `munin --version`.
 2. **Architecture Matching**:
    - Matches the host operating system and CPU architecture against published release assets:
@@ -53,3 +53,10 @@ update:
    - The new binary is renamed over `/usr/local/bin/munin` atomically using Linux `rename()`.
 4. **Service Restart**:
    - Munin exits cleanly after self-replacement, allowing systemd (`Restart=always`) to immediately restart the service with the new version.
+
+---
+
+## Related Documentation
+
+- **[Configuration Reference](configuration.md)**: Agent configuration schema for `update:`.
+- **[CLI Reference](cli_reference.md)**: Daemon flags including `--update-schedule`.

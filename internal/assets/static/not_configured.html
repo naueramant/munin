@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Screen Not Configured</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body, html {
+            height: 100%;
+            width: 100%;
+            background-color: #121212;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            text-align: center;
+            padding: 24px;
+            user-select: none;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 800px;
+        }
+
+        h1 {
+            font-size: clamp(2rem, 4vw, 3rem);
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            margin-bottom: 16px;
+            color: #ffffff;
+        }
+
+        p {
+            font-size: clamp(1.1rem, 2vw, 1.4rem);
+            color: #a1a1aa;
+            margin-bottom: 24px;
+            line-height: 1.5;
+        }
+
+        .ip {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: clamp(1rem, 1.8vw, 1.25rem);
+            color: #71717a;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Screen Not Configured</h1>
+        <p id="description">No content has been configured to be shown</p>
+        <p class="ip" id="ip-info"></p>
+    </div>
+
+    <script>
+        const url = new URL(window.location.href);
+        const ip = url.searchParams.get("ip");
+        const msg = url.searchParams.get("msg");
+
+        if (msg) {
+            document.getElementById("description").innerText = msg;
+        }
+
+        if (ip) {
+            document.getElementById("ip-info").innerText = `IP: ${ip}`;
+        }
+    </script>
+</body>
+</html>

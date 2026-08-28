@@ -2,6 +2,7 @@ package cron
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
@@ -41,6 +42,31 @@ func UpdateCrontab(power config.PowerConfig, jobs []config.Job) error {
 	return nil
 }
 
+// ClearCrontab removes any munin-managed block from the current native user crontab.
+// Returns whether any managed block was found and removed, and any error.
+func ClearCrontab() (bool, error) {
+	currentCrontab, err := readCurrentCrontab()
+	if err != nil {
+		if errors.Is(err, exec.ErrNotFound) || strings.Contains(err.Error(), "executable file not found") {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to read current crontab: %w", err)
+	}
+
+	cleaned := RemoveManagedBlock(currentCrontab)
+	if strings.TrimSpace(currentCrontab) == strings.TrimSpace(cleaned) {
+		return false, nil
+	}
+
+	if err := installCrontab(cleaned); err != nil {
+		return false, fmt.Errorf("failed to install cleaned crontab: %w", err)
+	}
+
+	slog.Info("Removed munin managed jobs from native user crontab")
+	return true, nil
+}
+
+
 // GenerateUpdatedCrontab merges the munin managed block into an existing crontab string.
 func GenerateUpdatedCrontab(existing string, power config.PowerConfig, jobs []config.Job) string {
 	cleaned := RemoveManagedBlock(existing)
@@ -64,19 +90,33 @@ func GenerateManagedBlock(power config.PowerConfig, jobs []config.Job) string {
 
 	dev := power.GetCecDevice()
 
-	if strings.TrimSpace(power.TurnOn) != "" {
+	screenOn := NormalizeSchedule(power.GetScreenOn())
+	if screenOn != "" {
 		lines = append(lines, fmt.Sprintf("# Display Power: Turn On & set active source (device %d)", dev))
-		lines = append(lines, fmt.Sprintf("%s echo 'on %d' | cec-client -s -d 1 && echo 'as' | cec-client -s -d 1 > /dev/null 2>&1", strings.TrimSpace(power.TurnOn), dev))
+		lines = append(lines, fmt.Sprintf("%s echo 'on %d' | cec-client -s -d 1 && echo 'as' | cec-client -s -d 1 > /dev/null 2>&1", screenOn, dev))
 	}
 
-	if strings.TrimSpace(power.TurnOff) != "" {
+	screenOff := NormalizeSchedule(power.GetScreenOff())
+	if screenOff != "" {
 		lines = append(lines, fmt.Sprintf("# Display Power: Turn Off / Standby (device %d)", dev))
-		lines = append(lines, fmt.Sprintf("%s echo 'standby %d' | cec-client -s -d 1 > /dev/null 2>&1", strings.TrimSpace(power.TurnOff), dev))
+		lines = append(lines, fmt.Sprintf("%s echo 'standby %d' | cec-client -s -d 1 > /dev/null 2>&1", screenOff, dev))
+	}
+
+	reboot := NormalizeSchedule(power.GetReboot())
+	if reboot != "" {
+		lines = append(lines, "# System Power: Reboot")
+		lines = append(lines, fmt.Sprintf("%s sudo reboot > /dev/null 2>&1", reboot))
+	}
+
+	powerOff := NormalizeSchedule(power.GetPowerOff())
+	if powerOff != "" {
+		lines = append(lines, "# System Power: Power Off / Shutdown")
+		lines = append(lines, fmt.Sprintf("%s sudo poweroff > /dev/null 2>&1", powerOff))
 	}
 
 	for _, job := range jobs {
 		cmdLine := job.GetCommandLine()
-		when := strings.TrimSpace(job.When)
+		when := NormalizeSchedule(job.When)
 		if when != "" && cmdLine != "" {
 			lines = append(lines, fmt.Sprintf("%s %s", when, cmdLine))
 		}

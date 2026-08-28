@@ -7,7 +7,6 @@ require (
 	github.com/chromedp/chromedp v0.16.0
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/phayes/freeport v0.0.0-20220201140144-74d24b5ae9f5
-	github.com/pkg/errors v0.9.1
 	github.com/radovskyb/watcher v1.0.7
 	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/crypto v0.55.0

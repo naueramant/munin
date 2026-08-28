@@ -11,6 +11,7 @@
 ./*.yml
 *packr.go
 main
+munin
 dist/
 
 # Test assets

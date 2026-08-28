@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -17,6 +18,7 @@ import (
 	"github.com/naueramant/munin/internal/browser"
 	"github.com/naueramant/munin/internal/config"
 	"github.com/naueramant/munin/internal/cron"
+	"github.com/naueramant/munin/internal/doctor"
 	"github.com/naueramant/munin/internal/filesync"
 	"github.com/naueramant/munin/internal/git"
 	"github.com/naueramant/munin/internal/updater"
@@ -25,7 +27,7 @@ import (
 )
 
 var (
-	flagAgentConfig    = flag.String("agent-config", "", "path to host agent configuration (defaults to ~/.munin/config.yaml)")
+	flagAgentConfig    = flag.String("agent-config", "", "path to host agent configuration (defaults to ~/.munin/agent.yaml)")
 	flagConfig         = flag.String("config", "", "path to local screen.yaml (runs in local mode without git)")
 	flagGitSchedule    = flag.String("git-schedule", "", "override git sync cron expression (e.g. '* * * * *', '*/5 * * * *')")
 	flagGitInterval    = flag.String("git-interval", "", "alias for git-schedule")
@@ -41,12 +43,36 @@ var (
 )
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "init" {
-		if err := wizard.Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "init":
+			if err := wizard.Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		case "remove", "uninstall":
+			runRemoveCommand(os.Args[2:])
+			return
+		case "doctor":
+			runDoctorCommand(os.Args[2:])
+			return
+		case "power-check":
+			runPowerCheckCommand(os.Args[2:])
+			return
 		}
-		return
+	}
+
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Munin - Autonomous Screen Agent for Raspberry Pi and Linux kiosks\n\n")
+		fmt.Fprintf(os.Stderr, "Usage:\n")
+		fmt.Fprintf(os.Stderr, "  munin [flags]               Run screen agent\n")
+		fmt.Fprintf(os.Stderr, "  munin init                  Launch interactive setup wizard\n")
+		fmt.Fprintf(os.Stderr, "  munin doctor [options]      Diagnose dependencies, systemd services, permissions, and configuration\n")
+		fmt.Fprintf(os.Stderr, "  munin power-check [options] Check screen power schedule and edge case state\n")
+		fmt.Fprintf(os.Stderr, "  munin remove [options]      Remove Munin service, crontab, and configuration\n\n")
+		fmt.Fprintf(os.Stderr, "Flags:\n")
+		flag.PrintDefaults()
 	}
 
 	flag.Parse()
@@ -55,6 +81,7 @@ func main() {
 		fmt.Printf("munin version %s\n", updater.CurrentVersion)
 		return
 	}
+
 
 	// Try loading agent config early to read LogLevel if set
 	agentCfg, mode, screenPath := determineMode()
@@ -185,6 +212,9 @@ func determineMode() (*config.AgentConfig, string, string) {
 }
 
 func runLocalMode(ctx context.Context, screenPath string, agentCfg *config.AgentConfig) {
+	if abs, err := filepath.Abs(screenPath); err == nil {
+		screenPath = abs
+	}
 	baseDir := filepath.Dir(screenPath)
 	var chromiumFlags []string
 	if agentCfg != nil {
@@ -252,31 +282,41 @@ func applyConfig(screenFile, baseDir string, extraChromiumFlags []string) {
 
 	c, err := config.Load(screenFile)
 	if err != nil {
-		slog.Error("Failed to load screen configuration", "file", screenFile, "error", err)
-		return
+		if errors.Is(err, os.ErrNotExist) || os.IsNotExist(err) || strings.Contains(err.Error(), "no such file or directory") {
+			slog.Warn("Screen configuration file not found", "file", screenFile)
+			c = &config.Configuration{Syntax: ""}
+		} else {
+			slog.Error("Failed to load screen configuration", "file", screenFile, "error", err)
+			return
+		}
 	}
 
 	// 1. Synchronize declared files
-	if len(c.Files) > 0 {
+	if c.Syntax != "" && len(c.Files) > 0 {
 		if err := filesync.SyncFiles(baseDir, c.Files); err != nil {
 			slog.Warn("File synchronization encountered errors", "error", err)
 		}
 	}
 
 	// 2. Update native user crontab
-	if c.Power.TurnOn != "" || c.Power.TurnOff != "" || len(c.Jobs) > 0 {
+	if c.Syntax != "" && (c.Power.HasEntries() || len(c.Jobs) > 0) {
 		if err := cron.UpdateCrontab(c.Power, c.Jobs); err != nil {
 			slog.Warn("Failed to update native crontab", "error", err)
 		}
 	}
 
-	// 3. Restart browser with updated screen
-	if bm != nil {
-		bm.Close()
+	// 3. Reconcile screen power state (e.g. after reboot when TV may auto turn on)
+	if c.Syntax != "" && c.Power.HasEntries() {
+		cron.ReconcilePowerState(c.Power)
 	}
 
-	bm = browser.NewBrowserManager(c, as, baseDir, extraChromiumFlags...)
-	go bm.Start()
+	// 4. Update browser screen live
+	if bm == nil {
+		bm = browser.NewBrowserManager(c, as, baseDir, extraChromiumFlags...)
+		go bm.Start()
+	} else {
+		bm.ApplyConfig(c)
+	}
 }
 
 func stopBrowser() {
@@ -287,3 +327,137 @@ func stopBrowser() {
 		bm = nil
 	}
 }
+
+func runRemoveCommand(args []string) {
+	fs := flag.NewFlagSet("remove", flag.ExitOnError)
+	var (
+		flagYes        = fs.Bool("yes", false, "automatic yes to prompts (non-interactive)")
+		flagY          = fs.Bool("y", false, "alias for --yes")
+		flagForce      = fs.Bool("force", false, "alias for --yes")
+		flagF          = fs.Bool("f", false, "alias for --yes")
+		flagPurge      = fs.Bool("purge", false, "purge configuration, data (~/.munin), deploy keys, and binary")
+		flagKeepConfig = fs.Bool("keep-config", false, "do not remove ~/.munin configuration and data")
+	)
+
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: munin remove [options]\n\n")
+		fmt.Fprintf(os.Stderr, "Remove Munin service, crontab entries, and configuration from the system.\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fmt.Fprintf(os.Stderr, "  -y, --yes         Automatic yes to prompts (non-interactive)\n")
+		fmt.Fprintf(os.Stderr, "  -f, --force       Alias for --yes\n")
+		fmt.Fprintf(os.Stderr, "      --purge       Purge configuration, data (~/.munin), deploy keys, and binary\n")
+		fmt.Fprintf(os.Stderr, "      --keep-config Do not remove configuration directory (~/.munin)\n")
+		fmt.Fprintf(os.Stderr, "  -h, --help        Show this help message\n")
+	}
+
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing remove flags: %v\n", err)
+		os.Exit(1)
+	}
+
+	opts := wizard.RemoveOptions{
+		Force:      *flagYes || *flagY || *flagForce || *flagF,
+		Purge:      *flagPurge,
+		KeepConfig: *flagKeepConfig,
+	}
+
+	if err := wizard.RunRemove(opts); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func runPowerCheckCommand(args []string) {
+	fs := flag.NewFlagSet("power-check", flag.ExitOnError)
+	configPath := fs.String("config", "", "path to screen.yaml")
+	enforce := fs.Bool("enforce", false, "send CEC standby command if screen is scheduled to be off")
+
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: munin power-check [options]\n\n")
+		fmt.Fprintf(os.Stderr, "Check screen power schedule and evaluate if the screen should be off.\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fmt.Fprintf(os.Stderr, "  --config string   Path to screen.yaml (optional, defaults to agent/local discovery)\n")
+		fmt.Fprintf(os.Stderr, "  --enforce         Send CEC standby command if screen is determined to be off\n")
+		fmt.Fprintf(os.Stderr, "  -h, --help        Show this help message\n")
+	}
+
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing power-check flags: %v\n", err)
+		os.Exit(1)
+	}
+
+	targetPath := *configPath
+	if targetPath == "" {
+		_, _, targetPath = determineMode()
+	}
+
+	c, err := config.Load(targetPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading screen config from %s: %v\n", targetPath, err)
+		os.Exit(1)
+	}
+
+	isOff := cron.ShouldScreenBeOff(c.Power, time.Now())
+	fmt.Printf("Config file: %s\n", targetPath)
+	fmt.Printf("Power options: screen_on=%q, screen_off=%q, reboot=%q, power_off=%q, cec_device=%d\n",
+		c.Power.GetScreenOn(), c.Power.GetScreenOff(), c.Power.GetReboot(), c.Power.GetPowerOff(), c.Power.GetCecDevice())
+	fmt.Printf("Current time: %s\n", time.Now().Format("2006-01-02 15:04:05"))
+	fmt.Printf("Screen should be OFF: %t\n", isOff)
+
+	if isOff && *enforce {
+		fmt.Println("Enforcing TV standby via CEC...")
+		if err := cron.StandbyScreen(c.Power.GetCecDevice()); err != nil {
+			fmt.Fprintf(os.Stderr, "Notice: could not send CEC standby: %v\n", err)
+		} else {
+			fmt.Println("[✓] Sent CEC standby command successfully.")
+		}
+	}
+}
+
+func runDoctorCommand(args []string) {
+	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
+	flagFix := fs.Bool("fix", false, "attempt automatic fixes for detected issues where possible")
+	flagJSON := fs.Bool("json", false, "output diagnostic results in JSON format")
+	flagVerbose := fs.Bool("verbose", false, "display detailed diagnostic information")
+	flagV := fs.Bool("v", false, "alias for --verbose")
+	flagAgentConfig := fs.String("agent-config", "", "path to agent.yaml (defaults to ~/.munin/agent.yaml)")
+	flagConfig := fs.String("config", "", "path to screen.yaml")
+
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: munin doctor [options]\n\n")
+		fmt.Fprintf(os.Stderr, "Diagnose system dependencies, systemd services, permissions, and configuration.\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fmt.Fprintf(os.Stderr, "      --fix           Attempt automatic fixes for detected issues where possible\n")
+		fmt.Fprintf(os.Stderr, "      --json          Output diagnostic results in JSON format\n")
+		fmt.Fprintf(os.Stderr, "  -v, --verbose       Display detailed diagnostic information\n")
+		fmt.Fprintf(os.Stderr, "      --agent-config  Path to agent.yaml (defaults to ~/.munin/agent.yaml)\n")
+		fmt.Fprintf(os.Stderr, "      --config        Path to screen.yaml\n")
+		fmt.Fprintf(os.Stderr, "  -h, --help          Show this help message\n")
+	}
+
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing doctor flags: %v\n", err)
+		os.Exit(1)
+	}
+
+	opts := doctor.Options{
+		Fix:             *flagFix,
+		JSON:            *flagJSON,
+		Verbose:         *flagVerbose || *flagV,
+		AgentConfigPath: *flagAgentConfig,
+		ScreenPath:      *flagConfig,
+	}
+
+	doc := doctor.New(opts)
+	report := doc.Run()
+
+	if err := doc.Render(os.Stdout, report); err != nil {
+		fmt.Fprintf(os.Stderr, "Error rendering report: %v\n", err)
+		os.Exit(1)
+	}
+
+	if report.HasErrors() {
+		os.Exit(1)
+	}
+}
+

@@ -1,5 +1,5 @@
 [Unit]
-Description=Munin Screen Agent (User Service)
+Description=Munin Screen Agent
 After=graphical-session.target network-online.target
 Wants=network-online.target
 

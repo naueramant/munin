@@ -1,5 +1,5 @@
 # Fleet Node Configuration
-# Copy this file to ~/.munin/config.yaml on the specific Raspberry Pi
+# Copy this file to ~/.munin/agent.yaml on the specific Raspberry Pi
 mode: "git"
 log_level: "info"
 
@@ -29,7 +29,7 @@ git:
 update:
   enabled: true
   repo: "naueramant/munin"
-  schedule: "0 4 * * *" # Daily at 4:00 AM
+  schedule: "0 4 * * *" # Daily at 04:00
 
 display:
   env: ":0"

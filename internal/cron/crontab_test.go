@@ -39,6 +39,32 @@ func TestGenerateManagedBlock(t *testing.T) {
 	}
 }
 
+func TestGenerateManagedBlock_PowerOptions(t *testing.T) {
+	dev := 1
+	power := config.PowerConfig{
+		ScreenOn:  "07:00",
+		ScreenOff: "10:00",
+		Reboot:    "11:00",
+		PowerOff:  "0 23 * * 5",
+		CecDevice: &dev,
+	}
+
+	block := GenerateManagedBlock(power, nil)
+
+	if !strings.Contains(block, "0 7 * * * echo 'on 1' | cec-client") {
+		t.Errorf("expected normalized screen_on command, got: %s", block)
+	}
+	if !strings.Contains(block, "0 10 * * * echo 'standby 1' | cec-client") {
+		t.Errorf("expected normalized screen_off command, got: %s", block)
+	}
+	if !strings.Contains(block, "0 11 * * * sudo reboot") {
+		t.Errorf("expected normalized reboot command, got: %s", block)
+	}
+	if !strings.Contains(block, "0 23 * * 5 sudo poweroff") {
+		t.Errorf("expected power_off command, got: %s", block)
+	}
+}
+
 func TestGenerateUpdatedCrontab(t *testing.T) {
 	existing := `# Existing user job
 0 12 * * * /home/pi/backup.sh
@@ -118,3 +144,15 @@ legacy mimir job
 		t.Errorf("existing jobs removed: %s", cleaned)
 	}
 }
+
+func TestRemoveManagedBlock_OnlyManagedBlock(t *testing.T) {
+	existing := BeginMarker + `
+0 7 * * 1-5 echo 'on 0' | cec-client
+` + EndMarker + "\n"
+
+	cleaned := RemoveManagedBlock(existing)
+	if strings.TrimSpace(cleaned) != "" {
+		t.Errorf("expected empty crontab, got: %q", cleaned)
+	}
+}
+

@@ -41,10 +41,14 @@ func TestWriteSampleScreenYAML(t *testing.T) {
 	if !strings.Contains(string(data), "power:") {
 		t.Errorf("sample screen yaml missing power block")
 	}
+	if !strings.Contains(string(data), "xkcd") {
+		t.Errorf("sample screen yaml missing xkcd example")
+	}
 }
 
 func TestCreateDefaultConfig(t *testing.T) {
-	tmpFile := filepath.Join(t.TempDir(), "sub", "config.yaml")
+	tmpDir := filepath.Join(t.TempDir(), "sub")
+	tmpFile := filepath.Join(tmpDir, "agent.yaml")
 	if err := createDefaultConfig(tmpFile); err != nil {
 		t.Fatalf("failed to create default config: %v", err)
 	}
@@ -56,5 +60,13 @@ func TestCreateDefaultConfig(t *testing.T) {
 
 	if !strings.Contains(string(data), `mode: "local"`) {
 		t.Errorf("expected default config to be local mode")
+	}
+
+	screenData, err := os.ReadFile(filepath.Join(tmpDir, "screen.yaml"))
+	if err != nil {
+		t.Fatalf("expected screen.yaml to be created: %v", err)
+	}
+	if !strings.Contains(string(screenData), "xkcd") {
+		t.Errorf("expected screen.yaml to contain xkcd example")
 	}
 }

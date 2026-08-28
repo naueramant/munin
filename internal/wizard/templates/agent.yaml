@@ -1,0 +1,12 @@
+# Munin Agent Configuration
+mode: "local"
+log_level: "info"
+screen_path: "~/.munin/screen.yaml"
+
+update:
+  enabled: true
+  repo: "naueramant/munin"
+  schedule: "0 4 * * *"
+
+display:
+  env: ":0"

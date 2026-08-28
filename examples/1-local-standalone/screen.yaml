@@ -12,13 +12,10 @@ tabs:
     duration: 15
     reload: false
 
-# TV Screen Power Scheduling via HDMI CEC (cec-utils)
+# TV Screen Power Scheduling via HDMI CEC (cec-utils) & system operations
 power:
-  turn_on: "0 7 * * 1-5"   # Turn on Monday to Friday at 07:00
-  turn_off: "0 19 * * 1-5" # Standby Monday to Friday at 19:00
-  cec_device: 0            # Default CEC target (0 for TV)
+  screen_on: "0 7 * * 1-5"   # Turn on Monday to Friday at 07:00
+  screen_off: "0 19 * * 1-5" # Standby Monday to Friday at 19:00
+  reboot: "0 3 * * *"        # Nightly reboot at 03:00 (auto turns screen back off if off-hours)
+  cec_device: 0              # Default CEC target (0 for TV)
 
-# Native Raspberry Pi crontab jobs
-jobs:
-  - when: "0 3 * * *"
-    command: "sudo reboot"

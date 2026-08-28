@@ -20,8 +20,10 @@ my-screens-repo/
 
 ## How It Works
 
-1. Each Raspberry Pi runs Munin with a `~/.munin/config.yaml` pointing to this repository.
+1. Each Raspberry Pi runs Munin with a `~/.munin/agent.yaml` pointing to this repository.
 2. The `subdir` setting determines which screen configuration the Pi tracks:
    - Lobby Pi: `subdir: "screens/office-lobby"`
    - NOC Pi: `subdir: "screens/ops-dashboard"`
 3. When you push a Git commit to `main`, each Pi pulls the changes on its configured cron schedule (`git.schedule`), syncs files to disk, updates HDMI CEC power timers in `crontab`, and seamlessly reloads Chromium tabs!
+
+For comprehensive instructions on fleet deployments and deploy key setup, see the [Git Synchronization & Fleet Management Guide](../../../../docs/git_sync.md).

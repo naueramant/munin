@@ -9,7 +9,7 @@ Munin delegates recurring tasks and screen power scheduling to the native Linux 
 Modern TVs and monitors connected to a Raspberry Pi via HDMI support the **Consumer Electronics Control (CEC)** standard. This allows the Raspberry Pi to turn the TV on, switch to the Pi's HDMI input, and put the TV into standby.
 
 ### Prerequisites
-Install `cec-utils` on Raspberry Pi OS:
+Install `cec-utils` on Raspberry Pi OS / Debian:
 ```bash
 sudo apt-get install -y cec-utils
 ```
@@ -27,20 +27,41 @@ echo 'standby 0' | cec-client -s -d 1
 
 ## 2. Configuring Power in `screen.yaml`
 
-In your screen configuration, specify the `power` block with standard 5-part cron syntax:
+In your screen configuration, specify the `power` block with standard 5-part cron syntax or simple 24-hour time (`HH:MM`):
 
 ```yaml
 power:
-  turn_on: "0 7 * * 1-5"   # Turn on Monday to Friday at 07:00
-  turn_off: "0 19 * * 1-5" # Turn off Monday to Friday at 19:00
-  cec_device: 0            # Default CEC target (0 is standard for TV)
+  screen_on: "0 7 * * 1-5"   # Turn on screen Monday to Friday at 07:00 (or "07:00")
+  screen_off: "0 19 * * 1-5" # Turn off screen Monday to Friday at 19:00 (or "19:00")
+  reboot: "0 3 * * *"        # Reboot host daily at 03:00 (or "03:00")
+  power_off: "0 22 * * 5"    # Optional scheduled host shutdown
+  cec_device: 0              # Optional CEC target (defaults to 0 for TV)
 ```
 
-Munin automatically translates these into native `cec-client` commands in the user's crontab.
+> **Compatibility**: `turn_on` and `turn_off` remain supported as backward-compatible aliases for `screen_on` and `screen_off`.
+
+Munin automatically translates these into native `cec-client` and `sudo` commands in the user's crontab.
 
 ---
 
-## 3. Scheduled Jobs in `screen.yaml`
+## 3. Post-Reboot Automatic Standby Recovery
+
+A common problem with HDMI CEC screens is that rebooting the host machine (e.g. Raspberry Pi) resets the GPU and sends an HDMI clock handshake. Many modern TVs automatically wake up when they detect an HDMI signal, even if the reboot occurred during off-hours (e.g. screen off at `19:00`, reboot at `03:00`, screen on at `07:00`).
+
+Munin solves this automatically:
+1. Whenever Munin starts up following a reboot, it evaluates the power schedule against the current time.
+2. If `screen_off` was scheduled and executed more recently than `screen_on` (i.e. `screen_on` has not run yet), Munin immediately re-asserts TV standby via CEC.
+3. A follow-up retry is dispatched after 15 seconds to ensure slow-booting TVs that ignore initial CEC packets are also put back into standby.
+
+You can inspect the power schedule and evaluate current screen status at any time with the CLI:
+```bash
+munin power-check
+munin power-check --enforce  # re-sends standby immediately if screen should be off
+```
+
+---
+
+## 4. Scheduled Jobs in `screen.yaml`
 
 You can also specify general system commands:
 
@@ -54,7 +75,7 @@ jobs:
 
 ---
 
-## 4. How Native Crontab is Managed
+## 5. How Native Crontab is Managed
 
 Munin manages a dedicated, isolated block inside your user's crontab (`crontab -l`):
 
@@ -67,10 +88,18 @@ Munin manages a dedicated, isolated block inside your user's crontab (`crontab -
 0 7 * * 1-5 echo 'on 0' | cec-client -s -d 1 && echo 'as' | cec-client -s -d 1 > /dev/null 2>&1
 # Display Power: Turn Off / Standby (device 0)
 0 19 * * 1-5 echo 'standby 0' | cec-client -s -d 1 > /dev/null 2>&1
-0 3 * * * sudo reboot
+# System Power: Reboot
+0 3 * * * sudo reboot > /dev/null 2>&1
 # --- END MUNIN MANAGED JOBS ---
 ```
 
 - **Safe coexistence**: Any crontab entries outside the `# BEGIN MUNIN` and `# END MUNIN` markers are preserved.
 - **No root required**: Munin runs as user `pi` and edits user `pi`'s crontab directly.
 - **No redundant writes**: If the generated crontab matches the active crontab, Munin avoids invoking `crontab -`.
+
+---
+
+## Related Documentation
+
+- **[Configuration Reference](configuration.md)**: Full syntax for `power:` and `jobs:`.
+- **[CLI Reference](cli_reference.md#munin-power-check)**: Details on `munin power-check`.

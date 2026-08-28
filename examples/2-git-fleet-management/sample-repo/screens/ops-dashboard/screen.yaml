@@ -10,8 +10,8 @@ tabs:
 
 # Power schedule
 power:
-  turn_on: "0 6 * * 1-5"   # Turn on early Mon-Fri at 06:00
-  turn_off: "0 22 * * 1-5"  # Turn off at 22:00
+  screen_on: "0 6 * * 1-5"   # Turn on early Mon-Fri at 06:00
+  screen_off: "0 22 * * 1-5"  # Turn off at 22:00
   cec_device: 0
 
 # Scheduled jobs installed into native crontab

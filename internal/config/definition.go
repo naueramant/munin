@@ -59,7 +59,7 @@ func (g GitConfig) GetInterval() time.Duration {
 type UpdateConfig struct {
 	Enabled  *bool  `yaml:"enabled,omitempty"`  // Whether auto-update is enabled (defaults to true)
 	Repo     string `yaml:"repo,omitempty"`     // GitHub repo: owner/repo (defaults to "naueramant/munin")
-	Schedule string `yaml:"schedule,omitempty"` // Cron expression for update check (defaults to "0 4 * * *" - daily at 4:00 AM)
+	Schedule string `yaml:"schedule,omitempty"` // Cron expression for update check (defaults to "0 4 * * *" - daily at 04:00)
 
 	When     string `yaml:"when,omitempty"`     // Deprecated alias for schedule
 	Interval string `yaml:"interval,omitempty"` // Deprecated alias for schedule
@@ -73,7 +73,7 @@ func (u UpdateConfig) IsEnabled() bool {
 	return *u.Enabled
 }
 
-// GetSchedule returns the cron schedule or default "0 4 * * *" (daily at 4:00 AM).
+// GetSchedule returns the cron schedule or default "0 4 * * *" (daily at 04:00).
 func (u UpdateConfig) GetSchedule() string {
 	if u.Schedule != "" {
 		return u.Schedule
@@ -122,11 +122,43 @@ type Configuration struct {
 	Files  []FileMapping `yaml:"files,omitempty" validate:"omitempty,dive"`
 }
 
-// PowerConfig defines HDMI CEC power schedule using cec-utils.
+// PowerConfig defines HDMI CEC power schedule and system power operations.
 type PowerConfig struct {
-	TurnOn    string `yaml:"turn_on,omitempty"`    // Cron expression to power on screen (e.g. "0 7 * * 1-5")
-	TurnOff   string `yaml:"turn_off,omitempty"`   // Cron expression to standby screen (e.g. "0 19 * * 1-5")
+	ScreenOn  string `yaml:"screen_on,omitempty"`  // Cron expression or HH:MM to power on screen
+	ScreenOff string `yaml:"screen_off,omitempty"` // Cron expression or HH:MM to standby screen
+	Reboot    string `yaml:"reboot,omitempty"`     // Cron expression or HH:MM to reboot system
+	PowerOff  string `yaml:"power_off,omitempty"` // Cron expression or HH:MM to power off / shutdown system
 	CecDevice *int   `yaml:"cec_device,omitempty"` // CEC device number, defaults to 0 (TV)
+
+	// Deprecated backward-compatibility aliases
+	TurnOn  string `yaml:"turn_on,omitempty"`
+	TurnOff string `yaml:"turn_off,omitempty"`
+}
+
+// GetScreenOn returns the screen on cron expression (or legacy turn_on).
+func (p PowerConfig) GetScreenOn() string {
+	if p.ScreenOn != "" {
+		return p.ScreenOn
+	}
+	return p.TurnOn
+}
+
+// GetScreenOff returns the screen off cron expression (or legacy turn_off).
+func (p PowerConfig) GetScreenOff() string {
+	if p.ScreenOff != "" {
+		return p.ScreenOff
+	}
+	return p.TurnOff
+}
+
+// GetReboot returns the system reboot cron expression.
+func (p PowerConfig) GetReboot() string {
+	return p.Reboot
+}
+
+// GetPowerOff returns the system power off cron expression.
+func (p PowerConfig) GetPowerOff() string {
+	return p.PowerOff
 }
 
 // GetCecDevice returns the CEC device ID (default 0).
@@ -137,14 +169,19 @@ func (p PowerConfig) GetCecDevice() int {
 	return 0
 }
 
+// HasEntries returns whether any power or reboot directives are configured.
+func (p PowerConfig) HasEntries() bool {
+	return p.GetScreenOn() != "" || p.GetScreenOff() != "" || p.GetReboot() != "" || p.GetPowerOff() != ""
+}
+
 // Tab defines a URL to display and cycle through.
 type Tab struct {
 	URL      string `yaml:"url" validate:"required"`
 	Duration uint64 `yaml:"duration,omitempty"`
 	Reload   bool   `yaml:"reload,omitempty"`
 	Auth     Auth   `yaml:"auth,omitempty" validate:"omitempty,dive"`
-	CSS      string `yaml:"css,omitempty" validate:"omitempty,file"`
-	JS       string `yaml:"js,omitempty" validate:"omitempty,file"`
+	CSS      string `yaml:"css,omitempty"`
+	JS       string `yaml:"js,omitempty"`
 }
 
 // Auth defines basic authentication credentials for a Tab.
