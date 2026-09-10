@@ -93,26 +93,12 @@ syntax: v1
 
 # Fullscreen tabs to cycle through
 tabs:
-  - url: "https://grafana.company.internal/d/ops-overview?kiosk"
-    duration: 45 # Display for 45 seconds
-    reload: true # Background refresh on every cycle
-    css: "styles/clean-grafana.css" # Inject CSS to hide navigation bars
-
-  - url: "https://status.datadoghq.com"
-    duration: 20
-
-  - url: "https://metrics.internal.local"
-    duration: 30
-    auth:
-      username: "kiosk"
-      password: "secretpassword"
+  - url: "https://xkcd.com"
 
 # Display power & maintenance schedule
 power:
-  screen_on: "07:00"    # Turn on TV at 07:00 (or cron: "0 7 * * 1-5")
-  screen_off: "19:00"   # TV standby at 19:00 (or cron: "0 19 * * 1-5")
-  reboot: "03:00"       # Nightly restart (preserves TV standby after boot)
-  cec_device: 0         # Standard TV CEC address
+  screen_on: "07:00"  # Turn on TV at 07:00
+  screen_off: "19:00" # TV standby at 19:00
 ```
 
 > 💡 **Local Standalone Mode**: No Git needed! Run `munin --config screen.yaml`. Whenever you save edits to `screen.yaml`, Munin automatically hot-reloads the screen in real time.
