@@ -517,7 +517,7 @@ func runUpdateCommand(args []string) {
 		fmt.Printf("Running a development build; latest release is %s.\n", latest)
 	}
 
-	if !(*flagYes || *flagY) {
+	if !*flagYes && !*flagY {
 		stat, _ := os.Stdin.Stat()
 		isTTY := (stat.Mode() & os.ModeCharDevice) != 0
 		if !isTTY {
