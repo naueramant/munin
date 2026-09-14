@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -60,6 +61,9 @@ func main() {
 		case "power-check":
 			runPowerCheckCommand(os.Args[2:])
 			return
+		case "update":
+			runUpdateCommand(os.Args[2:])
+			return
 		}
 	}
 
@@ -70,6 +74,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  munin init                  Launch interactive setup wizard\n")
 		fmt.Fprintf(os.Stderr, "  munin doctor [options]      Diagnose dependencies, systemd services, permissions, and configuration\n")
 		fmt.Fprintf(os.Stderr, "  munin power-check [options] Check screen power schedule and edge case state\n")
+		fmt.Fprintf(os.Stderr, "  munin update [options]      Check for and install the latest release\n")
 		fmt.Fprintf(os.Stderr, "  munin remove [options]      Remove Munin service, crontab, and configuration\n\n")
 		fmt.Fprintf(os.Stderr, "Flags:\n")
 		flag.PrintDefaults()
@@ -81,7 +86,6 @@ func main() {
 		fmt.Printf("munin version %s\n", updater.CurrentVersion)
 		return
 	}
-
 
 	// Try loading agent config early to read LogLevel if set
 	agentCfg, mode, screenPath := determineMode()
@@ -461,3 +465,80 @@ func runDoctorCommand(args []string) {
 	}
 }
 
+func runUpdateCommand(args []string) {
+	fs := flag.NewFlagSet("update", flag.ExitOnError)
+	flagYes := fs.Bool("yes", false, "skip confirmation and install the update immediately")
+	flagY := fs.Bool("y", false, "alias for --yes")
+	flagAgentCfg := fs.String("agent-config", "", "path to agent.yaml (defaults to ~/.munin/agent.yaml)")
+
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: munin update [options]\n\n")
+		fmt.Fprintf(os.Stderr, "Check GitHub for the latest release and install it. Runs interactively by default.\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fmt.Fprintf(os.Stderr, "  -y, --yes           Skip confirmation and install the update immediately\n")
+		fmt.Fprintf(os.Stderr, "      --agent-config  Path to agent.yaml (defaults to ~/.munin/agent.yaml)\n")
+		fmt.Fprintf(os.Stderr, "  -h, --help          Show this help message\n")
+	}
+
+	if err := fs.Parse(args); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing update flags: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Manual invocation always allowed: fall back to defaults if no agent config exists.
+	updateCfg := config.UpdateConfig{}
+	if agentCfg, err := config.LoadAgentConfig(*flagAgentCfg); err == nil && agentCfg != nil {
+		updateCfg = agentCfg.Update
+	}
+
+	up := updater.NewUpdater(updateCfg)
+
+	fmt.Printf("Current version: %s\n", updater.CurrentVersion)
+	fmt.Println("Checking for updates...")
+
+	available, latest, rel, err := up.CheckForUpdate()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error checking for updates: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Latest release:  %s\n", latest)
+
+	isDev := updater.CurrentVersion == "dev"
+
+	if !available && !isDev {
+		fmt.Println("Already up to date.")
+		return
+	}
+
+	if available {
+		fmt.Printf("A new version is available: %s\n", latest)
+	} else {
+		fmt.Printf("Running a development build; latest release is %s.\n", latest)
+	}
+
+	if !(*flagYes || *flagY) {
+		stat, _ := os.Stdin.Stat()
+		isTTY := (stat.Mode() & os.ModeCharDevice) != 0
+		if !isTTY {
+			fmt.Println("Run 'munin update --yes' to install it.")
+			return
+		}
+
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Printf("Install version %s now? [y/N]: ", latest)
+		input, _ := reader.ReadString('\n')
+		if !strings.EqualFold(strings.TrimSpace(input), "y") {
+			fmt.Println("Update cancelled.")
+			return
+		}
+	}
+
+	fmt.Println("Downloading and installing update...")
+	if err := up.ApplyRelease(rel); err != nil {
+		fmt.Fprintf(os.Stderr, "Error installing update: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("[✓] Updated to %s. Restart the munin service to run the new version.\n", latest)
+}

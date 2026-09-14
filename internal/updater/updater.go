@@ -87,36 +87,58 @@ func (u *Updater) checkAndUpdate(onUpdated func(newVersion string)) {
 	}
 }
 
-// CheckAndApply checks for a new release and applies it if available.
-func (u *Updater) CheckAndApply() (bool, string, error) {
-	rel, err := u.FetchLatestRelease()
+// CheckForUpdate queries the latest release and reports whether it is newer than the running binary.
+func (u *Updater) CheckForUpdate() (available bool, latest string, rel *GitHubRelease, err error) {
+	rel, err = u.FetchLatestRelease()
 	if err != nil {
-		return false, "", err
+		return false, "", nil, err
 	}
 
 	if !isNewerVersion(CurrentVersion, rel.TagName) {
 		slog.Debug("Release check completed; agent is up to date", "current_version", CurrentVersion, "latest_release", rel.TagName)
-		return false, rel.TagName, nil
+		return false, rel.TagName, rel, nil
 	}
 
+	return true, rel.TagName, rel, nil
+}
+
+// ApplyRelease downloads and installs the binary from the given release.
+func (u *Updater) ApplyRelease(rel *GitHubRelease) error {
 	slog.Info("New agent version available, downloading update...", "current", CurrentVersion, "latest", rel.TagName)
 
 	asset := findMatchingAsset(rel.Assets, runtime.GOOS, runtime.GOARCH)
 	if asset == nil {
-		return false, "", fmt.Errorf("no matching release asset found for %s/%s in release %s", runtime.GOOS, runtime.GOARCH, rel.TagName)
+		return fmt.Errorf("no matching release asset found for %s/%s in release %s", runtime.GOOS, runtime.GOARCH, rel.TagName)
 	}
 
 	slog.Debug("Downloading release asset", "name", asset.Name, "url", asset.BrowserDownloadURL)
 	binaryData, err := u.downloadAndExtract(asset.BrowserDownloadURL, asset.Name)
 	if err != nil {
-		return false, "", fmt.Errorf("failed to download release asset: %w", err)
+		return fmt.Errorf("failed to download release asset: %w", err)
 	}
 
 	if err := applyBinaryUpdate(binaryData); err != nil {
-		return false, "", fmt.Errorf("failed to apply binary update: %w", err)
+		return fmt.Errorf("failed to apply binary update: %w", err)
 	}
 
-	return true, rel.TagName, nil
+	return nil
+}
+
+// CheckAndApply checks for a new release and applies it if available.
+func (u *Updater) CheckAndApply() (bool, string, error) {
+	available, latest, rel, err := u.CheckForUpdate()
+	if err != nil {
+		return false, "", err
+	}
+	if !available {
+		return false, latest, nil
+	}
+
+	if err := u.ApplyRelease(rel); err != nil {
+		return false, "", err
+	}
+
+	return true, latest, nil
 }
 
 // FetchLatestRelease queries the GitHub API for the latest release.

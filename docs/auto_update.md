@@ -37,6 +37,24 @@ update:
 
 ---
 
+## Manual Updates
+
+You can trigger an update on demand instead of waiting for the schedule:
+
+```bash
+# Interactively check and confirm before installing
+munin update
+
+# Install the latest release without prompting
+munin update --yes
+```
+
+Manual invocation runs even when `update.enabled` is set to `false`, and uses the same
+architecture matching and atomic self-replacement described below. See the
+[CLI Reference](cli_reference.md#munin-update) for details.
+
+---
+
 ## How It Works
 
 1. **Scheduled Release Check**:
@@ -59,4 +77,4 @@ update:
 ## Related Documentation
 
 - **[Configuration Reference](configuration.md)**: Agent configuration schema for `update:`.
-- **[CLI Reference](cli_reference.md)**: Daemon flags including `--update-schedule`.
+- **[CLI Reference](cli_reference.md)**: Daemon flags including `--update-schedule` and the `munin update` command.

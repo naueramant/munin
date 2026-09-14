@@ -12,6 +12,7 @@ Munin provides a command-line interface with dedicated subcommands for setup, he
 | [`munin init`](#munin-init) | Launches the interactive setup wizard |
 | [`munin doctor`](#munin-doctor) | Diagnoses dependencies, services, permissions, and configuration |
 | [`munin power-check`](#munin-power-check) | Evaluates screen power schedule and edge-case status |
+| [`munin update`](#munin-update) | Checks for and installs the latest release |
 | [`munin remove`](#munin-remove) | Removes Munin service, crontab entries, and configuration |
 
 ---
@@ -127,6 +128,39 @@ munin power-check
 # Test power schedule and immediately enforce standby if during off-hours
 munin power-check --enforce
 ```
+
+---
+
+## `munin update`
+
+Checks GitHub Releases for a newer version and installs it on demand. This complements the scheduled auto-updater (see [Auto Update](auto_update.md)) by letting you update immediately. Manual invocation always runs regardless of the `update.enabled` setting in `agent.yaml`.
+
+By default the command is interactive: it reports the current and latest versions and asks for confirmation before installing. In non-interactive environments (no TTY), it reports availability without installing unless `--yes` is passed.
+
+```bash
+munin update [flags]
+```
+
+### Flags
+
+| Flag | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `-y`, `--yes` | bool | `false` | Skip confirmation and install the update immediately |
+| `--agent-config` | string | `~/.munin/agent.yaml` | Path to agent configuration file (used to resolve the release repository) |
+
+> **Note:** Development builds (version `dev`) cannot be compared against release tags, so `munin update` always offers to install the latest published release.
+
+### Examples
+
+```bash
+# Interactively check for and install the latest release
+munin update
+
+# Install the latest release without prompting (for scripts and cron)
+munin update --yes
+```
+
+After a successful update, restart the Munin service to run the new binary (`systemctl --user restart munin`, or rely on `Restart=always`).
 
 ---
 
