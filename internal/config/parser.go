@@ -18,6 +18,8 @@ func Load(filename string) (*Configuration, error) {
 		return &c, fmt.Errorf("failed to load configuration file: %w", err)
 	}
 
+	data = substituteEnvVars(data)
+
 	err = yaml.Unmarshal(data, &c)
 	if err != nil {
 		return &c, fmt.Errorf("failed to unmarshal configuration file: %w", err)
@@ -67,6 +69,8 @@ func LoadAgentConfig(explicitPath string) (*AgentConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read agent config from %s: %w", targetPath, err)
 	}
+
+	data = substituteEnvVars(data)
 
 	var cfg AgentConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {

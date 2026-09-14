@@ -48,7 +48,8 @@ Setting up wall monitors, NOC dashboards, or office displays shouldn't require f
 - 🔌 **HDMI-CEC Display Power**: Turn TVs on/off and schedule reboots via cron or simple `"07:00"` syntax, featuring smart post-reboot standby recovery.
 - 💉 **Custom CSS & JS Injection**: Hide navigation bars, apply dark mode themes, or inject custom telemetry into third-party dashboards.
 - 🔐 **HTTP Basic Auth**: Native support for password-protected internal dashboards without exposing credentials in URLs.
-- 🛠️ **Local Standalone Mode**: Run without Git using a local `screen.yaml` with automatic hot reload on file edits.
+- � **Environment Variable Substitution**: Reference host environment variables in any config value with `${VAR}` and `${VAR:=default}` syntax.
+- �🛠️ **Local Standalone Mode**: Run without Git using a local `screen.yaml` with automatic hot reload on file edits.
 - 🩺 **Self-Healing Diagnostics**: `munin doctor --fix` audits hardware permissions, GPU acceleration, and systemd services with one-click auto-repair.
 - 🚀 **Automated Updates**: Keeps itself up to date seamlessly in the background directly from GitHub Releases.
 

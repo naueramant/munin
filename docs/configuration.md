@@ -171,6 +171,41 @@ files:
 
 ---
 
+## Environment Variable Substitution
+
+Both the agent configuration (`agent.yaml`) and screen configuration (`screen.yaml`) support environment variable substitution. References are expanded from the host environment before the YAML is parsed, so they can be used in any value.
+
+| Syntax | Behavior |
+| :--- | :--- |
+| `${VAR}` | Expands to the value of `VAR`. Expands to an empty string if `VAR` is unset. |
+| `${VAR:=default}` | Expands to the value of `VAR`, or `default` when `VAR` is unset **or** empty. |
+
+Variable names must start with a letter or underscore and contain only letters, digits, and underscores.
+
+### Example
+
+```yaml
+syntax: v1
+tabs:
+  - url: "${DASHBOARD_URL}"
+    duration: ${TAB_DURATION:=30}
+    auth:
+      username: "${DASHBOARD_USER:=admin}"
+      password: "${DASHBOARD_PASSWORD}"
+```
+
+```yaml
+# ~/.munin/agent.yaml
+git:
+  repo: "${MUNIN_REPO}"
+  branch: "${MUNIN_BRANCH:=main}"
+  deploy_key: "${MUNIN_DEPLOY_KEY:=~/.ssh/id_munin_deploy}"
+```
+
+> **Tip**: Use `${VAR:=default}` to keep configs portable across hosts while still providing a sensible fallback when the variable is not set.
+
+---
+
 ## Related Documentation
 
 - **[Getting Started](getting_started.md)**: Setup and quick installation guide.

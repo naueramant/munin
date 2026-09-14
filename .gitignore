@@ -13,6 +13,7 @@
 main
 munin
 dist/
+config.yaml
 
 # Test assets
 *.js
