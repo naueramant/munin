@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Munin Message</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body, html {
+            height: 100%;
+            width: 100%;
+            background-color: #121212;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            text-align: center;
+            user-select: none;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        #message {
+            font-size: 6vw;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+            max-width: 90%;
+            padding: 5vw;
+        }
+
+        @keyframes munin-blink {
+            50% { opacity: 0; }
+        }
+
+        .blink {
+            animation: munin-blink 1s step-start infinite;
+        }
+    </style>
+</head>
+<body>
+    <div id="message"></div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const el = document.getElementById("message");
+
+        el.textContent = params.get("msg") || "";
+
+        const fontSize = params.get("fontSize");
+        if (fontSize) {
+            el.style.fontSize = `${parseInt(fontSize, 10)}px`;
+        }
+
+        const textColor = params.get("textColor");
+        if (textColor) {
+            el.style.color = textColor;
+        }
+
+        const backgroundColor = params.get("backgroundColor");
+        if (backgroundColor) {
+            document.documentElement.style.backgroundColor = backgroundColor;
+            document.body.style.backgroundColor = backgroundColor;
+        }
+
+        if (params.get("blink") === "1") {
+            el.classList.add("blink");
+        }
+    </script>
+</body>
+</html>

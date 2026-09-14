@@ -90,17 +90,44 @@ Placed in the target Git repository's `subdir` (or referenced locally via `scree
 ### Screen Configuration Reference Tables
 
 #### Tabs (`tabs:`)
-Each entry defines a web dashboard to render in fullscreen Chromium:
+Each entry defines a page to render fullscreen in the rotation. A tab shows **either** an external `url` **or** an inline `message` (the same content model as [scheduled takeovers](#scheduled-page-takeovers-schedules)):
 
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `url` | string | *Required* | The web URL or local file URL (`http://`, `https://`, `file://`). |
-| `duration` | integer | `30` (if multi-tab) or `0` | Seconds to display this tab before rotating to the next. If only 1 tab is defined, `0` displays it permanently. |
-| `reload` | boolean | `false` | If `true`, the page is refreshed each time it becomes active. |
-| `auth.username` | string | `""` | Optional HTTP Basic Authentication username. |
-| `auth.password` | string | `""` | Optional HTTP Basic Authentication password. |
+| `url` | string | *Required if no `message`* | The web URL or local file URL (`http://`, `https://`, `file://`). |
+| `duration` | integer or string | `30` (if multi-tab) or `0` | How long to display this tab before rotating. A bare number is seconds (e.g. `30`); a string is a Go duration (e.g. `"90s"`, `"1h30m"`). If only 1 tab is defined, `0` displays it permanently. |
+| `reload` | boolean | `false` | **Deprecated, no-op.** Every rotation switch already re-navigates the page; kept only for backward compatibility with old configs. |
+| `auth.username` | string | `""` | Optional HTTP Basic Authentication username (URL tabs). |
+| `auth.password` | string | `""` | Optional HTTP Basic Authentication password (URL tabs). |
 | `css` | string | `""` | Path to custom CSS file to inject (relative to `screen.yaml` or absolute). |
 | `js` | string | `""` | Path to custom JavaScript file to inject (relative to `screen.yaml` or absolute). |
+| `zoom` | number | `1` | Page zoom factor (e.g. `1.5` = 150%, like Chrome's Ctrl `+`). |
+| `message` | string | *Required if no `url`* | Inline text rendered fullscreen by the built-in message page. |
+| `font_size` | integer | responsive | Message font size in pixels. |
+| `text_color` | string | `#ffffff` | Message text color (any CSS color). |
+| `background_color` | string | `#121212` | Message background color (any CSS color). |
+| `blink` | boolean | `false` | If `true`, the message blinks. |
+
+#### Scheduled Page Takeovers (`schedules:`)
+Each entry temporarily interrupts the normal tab rotation at a scheduled time to display a specific page (or an inline message) for a fixed duration, then resumes the rotation. Ideal for time-based notices such as a lunch banner or a daily standup dashboard. Each schedule must define **either** `url` **or** `message`:
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `when` | string | *Required* | Cron expression or `"HH:MM"` for when the takeover triggers (e.g. `"0 12 * * 1-5"` or `"12:00"`). |
+| `duration` | integer or string | *Required* | How long to hold the page before resuming rotation. A bare number is seconds (e.g. `900`); a string is a Go duration (e.g. `"15m"`). |
+| `url` | string | *Required if no `message`* | External page to show (`http://`, `https://`, `file://`). |
+| `auth.username` | string | `""` | Optional HTTP Basic Authentication username (URL takeovers). |
+| `auth.password` | string | `""` | Optional HTTP Basic Authentication password (URL takeovers). |
+| `css` | string | `""` | Path to custom CSS file to inject (URL takeovers). |
+| `js` | string | `""` | Path to custom JavaScript file to inject (URL takeovers). |
+| `zoom` | number | `1` | Page zoom factor for URL takeovers (e.g. `1.5` = 150%). |
+| `message` | string | *Required if no `url`* | Inline text rendered fullscreen by the built-in message page. |
+| `font_size` | integer | responsive | Message font size in pixels. |
+| `text_color` | string | `#ffffff` | Message text color (any CSS color). |
+| `background_color` | string | `#121212` | Message background color (any CSS color). |
+| `blink` | boolean | `false` | If `true`, the message blinks. |
+
+> **Note**: If two schedules overlap, the most recently triggered one takes over. Takeovers are handled in-process and do not touch the native crontab.
 
 #### Display Power Scheduling (`power:`)
 Controls TV power, system reboots, and active HDMI source using native `cec-utils` and system crontab. Supports standard 5-field cron syntax or simple 24-hour time format (`"HH:MM"`):
@@ -143,12 +170,22 @@ syntax: v1
 tabs:
   - url: "https://grafana.internal/d/fleet-metrics"
     duration: 45
-    reload: true
     css: "styles/clean-dashboard.css"
 
   - url: "https://calendar.google.com/calendar/embed?src=company"
     duration: 15
-    reload: false
+
+# Timed page takeovers that interrupt the rotation
+schedules:
+  - when: "0 12 * * 1-5"     # Weekdays at 12:00
+    duration: 900            # Hold for 15 minutes
+    message: "Lunch time — back at 12:30"
+    font_size: 96
+    background_color: "#111111"
+
+  - when: "09:00"            # Daily standup dashboard
+    duration: 600
+    url: "https://intranet/standup"
 
 # Display and host power schedules
 power:

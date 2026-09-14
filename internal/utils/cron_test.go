@@ -44,3 +44,31 @@ func TestComputeNextCronDelay(t *testing.T) {
 		t.Errorf("expected default 1h, got %v", delay)
 	}
 }
+
+func TestActiveWindowRemaining(t *testing.T) {
+	// Window: daily 21:19 for 7 minutes (ends 21:26).
+	dur := 7 * time.Minute
+
+	// Inside the window at 21:23 -> ~3 minutes remaining.
+	now := time.Date(2026, 8, 28, 21, 23, 0, 0, time.UTC)
+	remaining, active := ActiveWindowRemaining("19 21 * * *", dur, now)
+	if !active || remaining != 3*time.Minute {
+		t.Errorf("expected active with 3m remaining, got active=%v remaining=%v", active, remaining)
+	}
+
+	// After the window at 21:30 -> not active.
+	after := time.Date(2026, 8, 28, 21, 30, 0, 0, time.UTC)
+	if _, active := ActiveWindowRemaining("19 21 * * *", dur, after); active {
+		t.Errorf("expected not active after window")
+	}
+
+	// "HH:MM" form inside the window.
+	if remaining, active := ActiveWindowRemaining("21:19", dur, now); !active || remaining != 3*time.Minute {
+		t.Errorf("expected HH:MM active with 3m remaining, got active=%v remaining=%v", active, remaining)
+	}
+
+	// Duration-style expressions have no absolute anchor.
+	if _, active := ActiveWindowRemaining("5m", dur, now); active {
+		t.Errorf("expected duration-style expression to be inactive")
+	}
+}

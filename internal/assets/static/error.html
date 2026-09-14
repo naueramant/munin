@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scheduled Page Unavailable</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body, html {
+            height: 100%;
+            width: 100%;
+            background-color: #121212;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            text-align: center;
+            padding: 24px;
+            user-select: none;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            max-width: 900px;
+        }
+
+        h1 {
+            font-size: clamp(2rem, 4vw, 3rem);
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            margin-bottom: 16px;
+        }
+
+        p {
+            font-size: clamp(1.1rem, 2vw, 1.4rem);
+            color: #a1a1aa;
+            margin-bottom: 12px;
+            line-height: 1.5;
+        }
+
+        .detail {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: clamp(0.95rem, 1.6vw, 1.15rem);
+            color: #f87171;
+            word-break: break-all;
+        }
+
+        .url {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: clamp(0.95rem, 1.6vw, 1.15rem);
+            color: #71717a;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 id="title">Something went wrong</h1>
+        <p id="message">An error occurred.</p>
+        <p class="url" id="url"></p>
+        <p class="detail" id="error"></p>
+    </div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const title = params.get("title");
+        const message = params.get("message");
+        const url = params.get("url");
+        const error = params.get("error");
+
+        if (title) {
+            document.getElementById("title").textContent = title;
+        }
+        if (message) {
+            document.getElementById("message").textContent = message;
+        }
+
+        const urlEl = document.getElementById("url");
+        if (url) {
+            urlEl.textContent = url;
+        } else {
+            urlEl.style.display = "none";
+        }
+
+        const errorEl = document.getElementById("error");
+        if (error) {
+            errorEl.textContent = error;
+        } else {
+            errorEl.style.display = "none";
+        }
+    </script>
+</body>
+</html>

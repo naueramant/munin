@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -115,11 +116,12 @@ type DisplayConfig struct {
 
 // Configuration represents the contents of screen.yaml.
 type Configuration struct {
-	Syntax string        `yaml:"syntax" validate:"required,syntax"`
-	Tabs   []Tab         `yaml:"tabs,omitempty" validate:"omitempty,dive"`
-	Power  PowerConfig   `yaml:"power,omitempty" validate:"omitempty,dive"`
-	Jobs   []Job         `yaml:"jobs,omitempty" validate:"omitempty,dive"`
-	Files  []FileMapping `yaml:"files,omitempty" validate:"omitempty,dive"`
+	Syntax    string        `yaml:"syntax" validate:"required,syntax"`
+	Tabs      []Tab         `yaml:"tabs,omitempty" validate:"omitempty,dive"`
+	Schedules []Schedule    `yaml:"schedules,omitempty" validate:"omitempty,dive"`
+	Power     PowerConfig   `yaml:"power,omitempty" validate:"omitempty,dive"`
+	Jobs      []Job         `yaml:"jobs,omitempty" validate:"omitempty,dive"`
+	Files     []FileMapping `yaml:"files,omitempty" validate:"omitempty,dive"`
 }
 
 // PowerConfig defines HDMI CEC power schedule and system power operations.
@@ -127,7 +129,7 @@ type PowerConfig struct {
 	ScreenOn  string `yaml:"screen_on,omitempty"`  // Cron expression or HH:MM to power on screen
 	ScreenOff string `yaml:"screen_off,omitempty"` // Cron expression or HH:MM to standby screen
 	Reboot    string `yaml:"reboot,omitempty"`     // Cron expression or HH:MM to reboot system
-	PowerOff  string `yaml:"power_off,omitempty"` // Cron expression or HH:MM to power off / shutdown system
+	PowerOff  string `yaml:"power_off,omitempty"`  // Cron expression or HH:MM to power off / shutdown system
 	CecDevice *int   `yaml:"cec_device,omitempty"` // CEC device number, defaults to 0 (TV)
 
 	// Deprecated backward-compatibility aliases
@@ -174,20 +176,95 @@ func (p PowerConfig) HasEntries() bool {
 	return p.GetScreenOn() != "" || p.GetScreenOff() != "" || p.GetReboot() != "" || p.GetPowerOff() != ""
 }
 
-// Tab defines a URL to display and cycle through.
+// Duration accepts either a plain number of seconds (e.g. `30`) or a Go
+// duration string (e.g. `"5m"`, `"1h30m"`) in YAML.
+type Duration time.Duration
+
+// Duration returns the value as a time.Duration.
+func (d Duration) Duration() time.Duration { return time.Duration(d) }
+
+// UnmarshalYAML accepts a bare number (seconds) or a Go duration string.
+func (d *Duration) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var i int64
+	if err := unmarshal(&i); err == nil {
+		*d = Duration(time.Duration(i) * time.Second)
+		return nil
+	}
+
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+	s = strings.TrimSpace(s)
+	if s == "" {
+		*d = 0
+		return nil
+	}
+	if parsed, err := time.ParseDuration(s); err == nil {
+		*d = Duration(parsed)
+		return nil
+	}
+	if n, err := strconv.Atoi(s); err == nil {
+		*d = Duration(time.Duration(n) * time.Second)
+		return nil
+	}
+	return fmt.Errorf("invalid duration %q", s)
+}
+
+// Content is the shared payload of a tab or a schedule: either an external
+// page (`url`, with optional auth/css/js/zoom) or an inline `message` rendered
+// by the local assets server. Tabs and schedules embed it so both can show a
+// URL or a message.
+type Content struct {
+	// External page variant
+	URL  string  `yaml:"url,omitempty"`
+	Auth Auth    `yaml:"auth,omitempty" validate:"omitempty,dive"`
+	CSS  string  `yaml:"css,omitempty"`
+	JS   string  `yaml:"js,omitempty"`
+	Zoom float64 `yaml:"zoom,omitempty"`
+
+	// Inline message variant
+	Message         string `yaml:"message,omitempty"`
+	FontSize        uint64 `yaml:"font_size,omitempty"`
+	TextColor       string `yaml:"text_color,omitempty"`
+	BackgroundColor string `yaml:"background_color,omitempty"`
+	Blink           bool   `yaml:"blink,omitempty"`
+}
+
+// HasURL reports whether the content targets an external URL.
+func (c Content) HasURL() bool {
+	return strings.TrimSpace(c.URL) != ""
+}
+
+// HasMessage reports whether the content renders an inline message.
+func (c Content) HasMessage() bool {
+	return strings.TrimSpace(c.Message) != ""
+}
+
+// Tab defines a page to display and cycle through. It shows either a `url` or
+// an inline `message`.
 type Tab struct {
-	URL      string `yaml:"url" validate:"required"`
-	Duration uint64 `yaml:"duration,omitempty"`
-	Reload   bool   `yaml:"reload,omitempty"`
-	Auth     Auth   `yaml:"auth,omitempty" validate:"omitempty,dive"`
-	CSS      string `yaml:"css,omitempty"`
-	JS       string `yaml:"js,omitempty"`
+	Content  `yaml:",inline"`
+	Duration Duration `yaml:"duration,omitempty"`
+
+	// Deprecated: no-op. Every rotation switch re-navigates the shared display
+	// tab regardless of this value; kept only so old configs still parse.
+	Reload bool `yaml:"reload,omitempty"`
 }
 
 // Auth defines basic authentication credentials for a Tab.
 type Auth struct {
 	Username string `yaml:"username,omitempty"`
 	Password string `yaml:"password,omitempty"`
+}
+
+// Schedule defines a timed page takeover: at `when` the normal tab rotation is
+// interrupted, the schedule's content is shown for `duration`, then the
+// rotation resumes. Content is either an external `url` or an inline `message`.
+type Schedule struct {
+	Content  `yaml:",inline"`
+	When     string   `yaml:"when" validate:"required"`          // Cron expression or "HH:MM"
+	Duration Duration `yaml:"duration" validate:"required,gt=0"` // Seconds or Go duration to hold the page
 }
 
 // Job defines a cron task to be managed in native crontab.

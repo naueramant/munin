@@ -4,7 +4,6 @@ syntax: v1
 tabs:
   - url: "https://welcome.company.com/"
     duration: 30
-    reload: true
     css: "custom.css"
   - url: "https://calendar.google.com/calendar/embed?src=company_events"
     duration: 20

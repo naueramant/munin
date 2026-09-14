@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/naueramant/munin/internal/utils"
 	yaml "gopkg.in/yaml.v2"
@@ -34,7 +35,7 @@ func Load(filename string) (*Configuration, error) {
 	if len(c.Tabs) > 1 {
 		for i := range c.Tabs {
 			if c.Tabs[i].Duration == 0 {
-				c.Tabs[i].Duration = 30
+				c.Tabs[i].Duration = Duration(30 * time.Second)
 			}
 		}
 	}
@@ -42,6 +43,21 @@ func Load(filename string) (*Configuration, error) {
 	err = Validate(c)
 	if err != nil {
 		return &c, fmt.Errorf("configuration file invalid: %w", err)
+	}
+
+	for i, tb := range c.Tabs {
+		if !tb.HasURL() && !tb.HasMessage() {
+			return &c, fmt.Errorf("configuration file invalid: tabs[%d] must define either url or message", i)
+		}
+	}
+
+	for i, s := range c.Schedules {
+		if !s.HasURL() && !s.HasMessage() {
+			return &c, fmt.Errorf("configuration file invalid: schedules[%d] must define either url or message", i)
+		}
+		if !validScheduleWhen(s.When) {
+			return &c, fmt.Errorf("configuration file invalid: schedules[%d].when %q is not a valid cron, HH:MM, or duration expression", i, s.When)
+		}
 	}
 
 	return &c, nil

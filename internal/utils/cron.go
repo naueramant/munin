@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -12,6 +13,50 @@ import (
 var defaultCronParser = cronparser.NewParser(
 	cronparser.Minute | cronparser.Hour | cronparser.Dom | cronparser.Month | cronparser.Dow | cronparser.Descriptor,
 )
+
+// normalizeTimeOfDay converts an "HH:MM" expression into a daily cron
+// expression. Other inputs are returned unchanged.
+func normalizeTimeOfDay(expr string) string {
+	if strings.Contains(expr, ":") && len(strings.Fields(expr)) == 1 {
+		parts := strings.Split(expr, ":")
+		if len(parts) == 2 {
+			hour, errH := strconv.Atoi(parts[0])
+			min, errM := strconv.Atoi(parts[1])
+			if errH == nil && errM == nil && hour >= 0 && hour < 24 && min >= 0 && min < 60 {
+				return fmt.Sprintf("%d %d * * *", min, hour)
+			}
+		}
+	}
+	return expr
+}
+
+// ActiveWindowRemaining reports whether `from` currently falls inside a window
+// that opened at the most recent trigger of the cron/"HH:MM" expression and
+// lasts for `duration`, returning the time left in that window. Duration-style
+// expressions (e.g. "5m") have no absolute anchor and return false.
+func ActiveWindowRemaining(expr string, duration time.Duration, from time.Time) (time.Duration, bool) {
+	if duration <= 0 {
+		return 0, false
+	}
+
+	schedule, err := defaultCronParser.Parse(normalizeTimeOfDay(strings.TrimSpace(expr)))
+	if err != nil {
+		return 0, false
+	}
+
+	// Earliest trigger strictly after (from - duration); if it is at or before
+	// `from`, that window is still open.
+	start := schedule.Next(from.Add(-duration))
+	if start.After(from) {
+		return 0, false
+	}
+
+	remaining := duration - from.Sub(start)
+	if remaining <= 0 {
+		return 0, false
+	}
+	return remaining, true
+}
 
 // ComputeNextCronDelay calculates the duration from `from` until the next execution time matching the cron expression.
 // If expr is empty, it uses defaultExpr.

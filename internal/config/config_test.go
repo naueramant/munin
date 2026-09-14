@@ -90,6 +90,163 @@ power:
 	}
 }
 
+func TestLoadScreenConfigWithSchedules(t *testing.T) {
+	content := `
+syntax: v1
+tabs:
+  - url: "https://example.com"
+    duration: 30
+schedules:
+  - when: "0 12 * * 1-5"
+    duration: 900
+    url: "https://intranet/lunch"
+  - when: "12:00"
+    duration: 600
+    message: "Lunch time"
+    font_size: 96
+    background_color: "#111"
+`
+	tmpFile := filepath.Join(t.TempDir(), "screen.yaml")
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(tmpFile)
+	if err != nil {
+		t.Fatalf("failed to load config with schedules: %v", err)
+	}
+
+	if len(cfg.Schedules) != 2 {
+		t.Fatalf("expected 2 schedules, got %d", len(cfg.Schedules))
+	}
+	if !cfg.Schedules[0].HasURL() || cfg.Schedules[0].HasMessage() {
+		t.Errorf("expected first schedule to be a URL takeover: %+v", cfg.Schedules[0])
+	}
+	if !cfg.Schedules[1].HasMessage() || cfg.Schedules[1].FontSize != 96 {
+		t.Errorf("expected second schedule to be a message takeover: %+v", cfg.Schedules[1])
+	}
+}
+
+func TestLoadScreenConfigWithStringDurationAndZoom(t *testing.T) {
+	content := `
+syntax: v1
+tabs:
+  - url: "https://example.com"
+    duration: "1h30m"
+    zoom: 1.5
+schedules:
+  - when: "12:00"
+    duration: "15m"
+    message: "Lunch time"
+    zoom: 2
+`
+	tmpFile := filepath.Join(t.TempDir(), "screen.yaml")
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(tmpFile)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	if cfg.Tabs[0].Duration.Duration() != 90*time.Minute {
+		t.Errorf("expected tab duration 1h30m, got %v", cfg.Tabs[0].Duration.Duration())
+	}
+	if cfg.Tabs[0].Zoom != 1.5 {
+		t.Errorf("expected tab zoom 1.5, got %v", cfg.Tabs[0].Zoom)
+	}
+	if cfg.Schedules[0].Duration.Duration() != 15*time.Minute {
+		t.Errorf("expected schedule duration 15m, got %v", cfg.Schedules[0].Duration.Duration())
+	}
+	if cfg.Schedules[0].Zoom != 2 {
+		t.Errorf("expected schedule zoom 2, got %v", cfg.Schedules[0].Zoom)
+	}
+}
+
+func TestLoadScreenConfigWithMessageTab(t *testing.T) {
+	content := `
+syntax: v1
+tabs:
+  - url: "https://example.com"
+    duration: 30
+  - message: "Standup in 5 minutes"
+    duration: 15
+    font_size: 72
+    background_color: "#222"
+`
+	tmpFile := filepath.Join(t.TempDir(), "screen.yaml")
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(tmpFile)
+	if err != nil {
+		t.Fatalf("failed to load config with message tab: %v", err)
+	}
+
+	if len(cfg.Tabs) != 2 {
+		t.Fatalf("expected 2 tabs, got %d", len(cfg.Tabs))
+	}
+	if !cfg.Tabs[0].HasURL() || cfg.Tabs[0].HasMessage() {
+		t.Errorf("expected first tab to be a URL tab: %+v", cfg.Tabs[0])
+	}
+	if !cfg.Tabs[1].HasMessage() || cfg.Tabs[1].HasURL() || cfg.Tabs[1].FontSize != 72 {
+		t.Errorf("expected second tab to be a message tab: %+v", cfg.Tabs[1])
+	}
+}
+
+func TestLoadScreenConfigRejectsEmptyTab(t *testing.T) {
+	content := `
+syntax: v1
+tabs:
+  - duration: 30
+`
+	tmpFile := filepath.Join(t.TempDir(), "screen.yaml")
+	if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(tmpFile); err == nil {
+		t.Fatalf("expected error loading tab with neither url nor message")
+	}
+}
+
+func TestLoadScreenConfigRejectsInvalidSchedules(t *testing.T) {
+	cases := map[string]string{
+		"missing content": `
+syntax: v1
+schedules:
+  - when: "12:00"
+    duration: 60
+`,
+		"missing duration": `
+syntax: v1
+schedules:
+  - when: "12:00"
+    message: "hi"
+`,
+		"invalid when": `
+syntax: v1
+schedules:
+  - when: "not-a-time"
+    duration: 60
+    message: "hi"
+`,
+	}
+
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			tmpFile := filepath.Join(t.TempDir(), "screen.yaml")
+			if err := os.WriteFile(tmpFile, []byte(content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(tmpFile); err == nil {
+				t.Fatalf("expected error loading invalid schedule config")
+			}
+		})
+	}
+}
+
 func TestLoadAgentConfig(t *testing.T) {
 	content := `
 mode: "git"
@@ -224,8 +381,8 @@ tabs:
 	if screenCfg.Syntax != "v1" {
 		t.Errorf("expected default syntax 'v1', got %s", screenCfg.Syntax)
 	}
-	if screenCfg.Tabs[0].Duration != 30 || screenCfg.Tabs[1].Duration != 30 {
-		t.Errorf("expected default multi-tab duration 30s, got %d and %d", screenCfg.Tabs[0].Duration, screenCfg.Tabs[1].Duration)
+	if screenCfg.Tabs[0].Duration != Duration(30*time.Second) || screenCfg.Tabs[1].Duration != Duration(30*time.Second) {
+		t.Errorf("expected default multi-tab duration 30s, got %v and %v", screenCfg.Tabs[0].Duration.Duration(), screenCfg.Tabs[1].Duration.Duration())
 	}
 	if screenCfg.Power.GetCecDevice() != 0 {
 		t.Errorf("expected default CEC device 0, got %d", screenCfg.Power.GetCecDevice())
@@ -288,4 +445,3 @@ func TestExamplesValidity(t *testing.T) {
 		t.Errorf("expected 1 job in ops-dashboard, got %d", len(opsScreen.Jobs))
 	}
 }
-

@@ -6,11 +6,17 @@ syntax: v1
 tabs:
   - url: "https://grafana.internal/d/local-stats"
     duration: 45 # seconds
-    reload: true
 
   - url: "https://weather.com/"
     duration: 15
-    reload: false
+
+# Timed page takeovers: interrupt the rotation at a set time for a fixed duration
+schedules:
+  - when: "12:00"        # Every day at noon
+    duration: 900        # Hold for 15 minutes
+    message: "Lunch time — back at 12:30"
+    font_size: 96
+    background_color: "#111111"
 
 # TV Screen Power Scheduling via HDMI CEC (cec-utils) & system operations
 power:

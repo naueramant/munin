@@ -291,6 +291,10 @@ func applyConfig(screenFile, baseDir string, extraChromiumFlags []string) {
 			c = &config.Configuration{Syntax: ""}
 		} else {
 			slog.Error("Failed to load screen configuration", "file", screenFile, "error", err)
+			if bm == nil {
+				bm = browser.NewBrowserManager(&config.Configuration{Syntax: ""}, as, baseDir, extraChromiumFlags...)
+			}
+			bm.ShowError("Invalid Screen Configuration", err.Error())
 			return
 		}
 	}

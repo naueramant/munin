@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 func TestSubstituteEnvVars(t *testing.T) {
@@ -57,7 +58,7 @@ tabs:
 	if len(cfg.Tabs) != 1 || cfg.Tabs[0].URL != "https://dashboard.example.com" {
 		t.Errorf("unexpected tab url: %+v", cfg.Tabs)
 	}
-	if cfg.Tabs[0].Duration != 45 {
-		t.Errorf("expected duration 45, got %d", cfg.Tabs[0].Duration)
+	if cfg.Tabs[0].Duration != Duration(45*time.Second) {
+		t.Errorf("expected duration 45s, got %v", cfg.Tabs[0].Duration.Duration())
 	}
 }

@@ -4,7 +4,6 @@ syntax: v1
 tabs:
   - url: "https://grafana.internal/d/fleet-metrics?kiosk"
     duration: 60
-    reload: true
   - url: "https://status.datadoghq.com/"
     duration: 30
 

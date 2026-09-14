@@ -31,7 +31,7 @@
 Setting up wall monitors, NOC dashboards, or office displays shouldn't require fragile shell scripts, simulated `xdotool` keypresses, or heavyweight digital signage platforms with monthly fees.
 
 **Munin** is a single lightweight Go binary (<15 MB) designed specifically for unattended kiosks:
-- **Chrome DevTools Protocol (CDP) native**: Real browser control with clean tab cycling, background refresh, and automatic retry on network drops.
+- **Chrome DevTools Protocol (CDP) native**: Real, chrome-less fullscreen kiosk display with clean content rotation and automatic retry on network drops.
 - **GitOps-driven**: Manage 1 or 100+ screens from a single Git repo. Push to `main` and screens sync, reconfigure, and refresh automatically.
 - **Hardware-aware TV control**: Native HDMI-CEC commands turn screens on and off automatically and recover standby state after reboots.
 - **Rootless & self-healing**: Runs entirely under unprivileged `systemd --user` with built-in diagnostics (`munin doctor --fix`).
@@ -43,13 +43,14 @@ Setting up wall monitors, NOC dashboards, or office displays shouldn't require f
 ## ✨ Key Features
 
 - ⚡ **Lightweight & Fast**: Single compiled Go binary (<30 MB RAM). Ideal for Raspberry Pi Zero 2 W, 3, 4, 5, and Linux mini-PCs.
-- 🖥️ **Native Chromium Automation**: Controls Chromium via Chrome DevTools Protocol — smooth tab rotation, per-tab display duration, and background reload without fake keystrokes.
+- 🖥️ **Native Chromium Automation**: Controls Chromium via Chrome DevTools Protocol in true `--kiosk` fullscreen — no toolbar, tab strip, or title bar — with per-tab display duration and zoom level.
 - 🌐 **GitOps Fleet Management**: Manage all screens from one Git repository with SSH deploy keys, periodic sync, and local offline caching.
 - 🔌 **HDMI-CEC Display Power**: Turn TVs on/off and schedule reboots via cron or simple `"07:00"` syntax, featuring smart post-reboot standby recovery.
+- ⏰ **Scheduled Takeovers & Messages**: Interrupt the normal rotation at a cron-scheduled time to show a page or a built-in fullscreen text banner (e.g. a lunch notice), then automatically resume.
 - 💉 **Custom CSS & JS Injection**: Hide navigation bars, apply dark mode themes, or inject custom telemetry into third-party dashboards.
 - 🔐 **HTTP Basic Auth**: Native support for password-protected internal dashboards without exposing credentials in URLs.
-- � **Environment Variable Substitution**: Reference host environment variables in any config value with `${VAR}` and `${VAR:=default}` syntax.
-- �🛠️ **Local Standalone Mode**: Run without Git using a local `screen.yaml` with automatic hot reload on file edits.
+- 🧩 **Environment Variable Substitution**: Reference host environment variables in any config value with `${VAR}` and `${VAR:=default}` syntax.
+- 🛠️ **Local Standalone Mode**: Run without Git using a local `screen.yaml` with automatic hot reload on file edits.
 - 🩺 **Self-Healing Diagnostics**: `munin doctor --fix` audits hardware permissions, GPU acceleration, and systemd services with one-click auto-repair.
 - 🚀 **Automated Updates**: Keeps itself up to date seamlessly in the background directly from GitHub Releases.
 
