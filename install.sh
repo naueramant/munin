@@ -7,6 +7,9 @@ set -euo pipefail
 
 REPO="naueramant/munin"
 BIN_DIR="/usr/local/bin"
+# The real binary lives in a directory owned by CURRENT_USER (not root-owned BIN_DIR),
+# so the agent can atomically replace itself when running as a systemd --user service.
+REAL_BIN_DIR="/opt/munin"
 CURRENT_USER="${SUDO_USER:-$USER}"
 USER_HOME=$(eval echo "~${CURRENT_USER}")
 
@@ -133,23 +136,32 @@ if [ -n "$DOWNLOAD_URL" ]; then
     curl -fsSL "$DOWNLOAD_URL" -o "${TMP_DIR}/munin.tar.gz"
     tar -xzf "${TMP_DIR}/munin.tar.gz" -C "$TMP_DIR"
     if [ -f "${TMP_DIR}/munin" ]; then
-        sudo install -m 0755 "${TMP_DIR}/munin" "${BIN_DIR}/munin"
+        FETCHED_BIN="${TMP_DIR}/munin"
     elif [ -f "${TMP_DIR}/mir" ]; then
-        sudo install -m 0755 "${TMP_DIR}/mir" "${BIN_DIR}/munin"
+        FETCHED_BIN="${TMP_DIR}/mir"
     fi
 else
     echo "Notice: Prebuilt release asset not found on GitHub."
     if command -v go &>/dev/null; then
         echo "Building from source using local Go compiler..."
         go build -o "${TMP_DIR}/munin" .
-        sudo install -m 0755 "${TMP_DIR}/munin" "${BIN_DIR}/munin"
+        FETCHED_BIN="${TMP_DIR}/munin"
     else
         echo "Error: No release binary found and Go is not installed to compile from source."
         exit 1
     fi
 fi
 
-echo "Installed munin binary to ${BIN_DIR}/munin"
+# Install the real binary into a directory owned by CURRENT_USER so the auto-updater
+# (running unprivileged as a systemd --user service) can rewrite it in place.
+sudo mkdir -p "${REAL_BIN_DIR}"
+sudo install -o "${CURRENT_USER}" -g "${CURRENT_USER}" -m 0755 "${FETCHED_BIN}" "${REAL_BIN_DIR}/munin"
+sudo chown "${CURRENT_USER}:${CURRENT_USER}" "${REAL_BIN_DIR}"
+
+# Expose it on PATH via a symlink; BIN_DIR itself stays root-owned.
+sudo ln -sf "${REAL_BIN_DIR}/munin" "${BIN_DIR}/munin"
+
+echo "Installed munin binary to ${REAL_BIN_DIR}/munin (symlinked from ${BIN_DIR}/munin)"
 
 # 4. Launch interactive setup wizard
 echo ""

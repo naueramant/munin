@@ -66,9 +66,10 @@ architecture matching and atomic self-replacement described below. See the
      - `linux/armv7` (Raspberry Pi 32-bit OS)
      - `linux/amd64` (x86_64 PCs / VMs)
 3. **Atomic Self-Replacement**:
-   - The archive is downloaded and the new `munin` binary is extracted into a temporary file.
+   - The archive is downloaded and the new `munin` binary is extracted into a temporary file, written alongside the currently running executable (with symlinks resolved).
    - Execute permissions (`0755`) are applied.
-   - The new binary is renamed over `/usr/local/bin/munin` atomically using Linux `rename()`.
+   - The new binary is renamed over the resolved executable path atomically using Linux `rename()`.
+   - **This requires the binary's directory to be writable by the user running the service.** The installer places the real binary in a user-owned directory (`/opt/munin`) and symlinks it from `/usr/local/bin/munin`, since Munin typically runs as an unprivileged systemd **user** service and cannot write to root-owned `/usr/local/bin` directly. If you installed Munin before this layout existed, re-run `install.sh` to migrate, or manually move the binary to a user-owned directory and symlink it back.
 4. **Service Restart**:
    - Munin exits cleanly after self-replacement, allowing systemd (`Restart=always`) to immediately restart the service with the new version.
 

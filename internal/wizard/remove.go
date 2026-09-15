@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/naueramant/munin/internal/cron"
@@ -192,6 +193,10 @@ func removeExecutable(r *bufio.Reader, isTTY bool, opts RemoveOptions) {
 		}
 	}
 
+	// Resolve the real binary behind the symlink (e.g. /opt/munin/munin), since
+	// installs place the writable binary there and only symlink it from binPath.
+	realPath, _ := filepath.EvalSymlinks(targetPath)
+
 	if _, err := os.Stat(targetPath); os.IsNotExist(err) {
 		return
 	}
@@ -212,6 +217,13 @@ func removeExecutable(r *bufio.Reader, isTTY bool, opts RemoveOptions) {
 			}
 		} else {
 			fmt.Printf("[✓] Removed Munin binary (%s)\n", targetPath)
+		}
+
+		if realPath != "" && realPath != targetPath {
+			if err := os.Remove(realPath); err != nil && !os.IsNotExist(err) {
+				fmt.Printf("[!] Warning: Failed to remove real binary %s: %v\n", realPath, err)
+			}
+			_ = os.Remove(filepath.Dir(realPath)) // best-effort, only succeeds if empty
 		}
 	}
 }

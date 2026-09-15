@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -27,6 +28,9 @@ func checkSystemd(opts Options) []CheckResult {
 
 	// 4. Check host cron service
 	results = append(results, checkHostCronService())
+
+	// 5. Check that the running binary can be self-replaced by the auto-updater
+	results = append(results, checkAutoUpdateWritable(opts))
 
 	return results
 }
@@ -232,4 +236,89 @@ func getCurrentUsername() string {
 		return cur.Username
 	}
 	return ""
+}
+
+// checkAutoUpdateWritable verifies the running binary's directory is writable by the
+// current user, since the auto-updater self-replaces the binary in place and cannot
+// do so when running unprivileged (e.g. as a systemd --user service) against a
+// root-owned directory such as /usr/local/bin.
+func checkAutoUpdateWritable(opts Options) CheckResult {
+	execPath, err := os.Executable()
+	if err != nil {
+		return CheckResult{
+			Category: CategorySystemd,
+			Name:     "Auto-Update Writable",
+			Status:   StatusWarn,
+			Message:  "Could not determine running executable path",
+		}
+	}
+
+	resolved, err := filepath.EvalSymlinks(execPath)
+	if err != nil {
+		resolved = execPath
+	}
+	dir := filepath.Dir(resolved)
+
+	if isDirWritable(dir) {
+		return CheckResult{
+			Category: CategorySystemd,
+			Name:     "Auto-Update Writable",
+			Status:   StatusOK,
+			Message:  fmt.Sprintf("Binary directory %s is writable; auto-update can self-replace the binary", dir),
+		}
+	}
+
+	username := getCurrentUsername()
+	res := CheckResult{
+		Category: CategorySystemd,
+		Name:     "Auto-Update Writable",
+		Status:   StatusWarn,
+		Message:  fmt.Sprintf("Binary directory %s is not writable by the current user; auto-update will fail", dir),
+		Detail:   "Munin usually runs as an unprivileged systemd --user service and cannot self-replace a root-owned binary.",
+		Fixable:  true,
+		FixHint: fmt.Sprintf(
+			"Move the binary to a user-owned directory and symlink it back: "+
+				"sudo mkdir -p /opt/munin && sudo install -o %s -g %s -m 0755 %s /opt/munin/munin && sudo ln -sf /opt/munin/munin %s",
+			username, username, resolved, execPath),
+	}
+
+	if opts.Fix && username != "" {
+		if err := migrateBinaryToUserOwnedDir(resolved, execPath, username); err == nil {
+			res.FixApplied = true
+			res.Status = StatusOK
+			res.Message = "Migrated binary to /opt/munin and relinked; auto-update can now self-replace"
+		}
+	}
+
+	return res
+}
+
+// isDirWritable reports whether the current user can create files in dir.
+func isDirWritable(dir string) bool {
+	f, err := os.CreateTemp(dir, ".munin-write-test-*")
+	if err != nil {
+		return false
+	}
+	name := f.Name()
+	f.Close()
+	_ = os.Remove(name)
+	return true
+}
+
+// migrateBinaryToUserOwnedDir moves the real binary into /opt/munin (owned by username)
+// and replaces linkPath with a symlink to it. Requires sudo since /opt and linkPath's
+// directory are typically root-owned.
+func migrateBinaryToUserOwnedDir(realPath, linkPath, username string) error {
+	const realDir = "/opt/munin"
+
+	if err := exec.Command("sudo", "mkdir", "-p", realDir).Run(); err != nil {
+		return err
+	}
+	if err := exec.Command("sudo", "install", "-o", username, "-g", username, "-m", "0755", realPath, filepath.Join(realDir, "munin")).Run(); err != nil {
+		return err
+	}
+	if err := exec.Command("sudo", "chown", username+":"+username, realDir).Run(); err != nil {
+		return err
+	}
+	return exec.Command("sudo", "ln", "-sf", filepath.Join(realDir, "munin"), linkPath).Run()
 }

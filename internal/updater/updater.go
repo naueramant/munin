@@ -267,6 +267,12 @@ func applyBinaryUpdate(binaryData []byte) error {
 	dir := filepath.Dir(execPath)
 	tmpFile, err := os.CreateTemp(dir, "munin-update-*")
 	if err != nil {
+		if os.IsPermission(err) {
+			return fmt.Errorf("permission denied writing to %s: the directory is not writable by the current user. "+
+				"When running munin as a systemd --user service, %s must be owned by that user "+
+				"(re-run install.sh, or move the binary to a user-owned directory such as /opt/munin and symlink it from %s): %w",
+				dir, dir, execPath, err)
+		}
 		return fmt.Errorf("failed to create temporary update file: %w", err)
 	}
 	tmpName := tmpFile.Name()
@@ -285,6 +291,12 @@ func applyBinaryUpdate(binaryData []byte) error {
 
 	// Atomically replace running binary
 	if err := os.Rename(tmpName, execPath); err != nil {
+		if os.IsPermission(err) {
+			return fmt.Errorf("permission denied replacing %s: the binary/directory is not writable by the current user. "+
+				"When running munin as a systemd --user service, %s must be owned by that user "+
+				"(re-run install.sh, or move the binary to a user-owned directory such as /opt/munin and symlink it from %s): %w",
+				execPath, dir, execPath, err)
+		}
 		return fmt.Errorf("failed to replace binary %s: %w", execPath, err)
 	}
 

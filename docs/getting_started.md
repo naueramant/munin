@@ -18,8 +18,10 @@ The installer will:
 1. Detect host architecture (`arm64`, `armv7`, or `x86_64`).
 2. Install necessary system packages (`chromium`, `cec-utils`, `cron`, `unclutter`, fonts).
 3. Add the user to hardware access groups (`video`, `render`, `input`) for CEC and GPU acceleration.
-4. Download and install the pre-compiled `munin` binary to `/usr/local/bin/munin`.
+4. Download and install the pre-compiled `munin` binary to `/opt/munin/munin` (owned by your user), symlinked from `/usr/local/bin/munin` for `PATH` convenience.
 5. Launch the interactive setup wizard **`munin init`**.
+
+> **Why `/opt/munin` instead of `/usr/local/bin` directly?** Munin usually runs as a systemd **user** service (unprivileged). The auto-updater self-replaces the running binary in place, which requires write access to the binary's directory. `/usr/local/bin` is root-owned, so the real binary lives in a user-owned directory instead; `/usr/local/bin/munin` is just a symlink to it.
 
 ### Building from Source (Go 1.23+)
 
@@ -29,7 +31,9 @@ To build and install Munin manually:
 git clone https://github.com/naueramant/munin.git
 cd munin
 go build -v -o munin .
-sudo mv munin /usr/local/bin/
+sudo mkdir -p /opt/munin
+sudo install -o "$USER" -g "$USER" -m 0755 munin /opt/munin/munin
+sudo ln -sf /opt/munin/munin /usr/local/bin/munin
 ```
 
 Run tests to verify the build:
