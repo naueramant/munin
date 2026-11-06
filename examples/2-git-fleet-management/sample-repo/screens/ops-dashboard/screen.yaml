@@ -7,11 +7,18 @@ tabs:
   - url: "https://status.datadoghq.com/"
     duration: 30
 
-# Power schedule
+# Shared company takeovers plus one just for this screen
+schedules:
+  - !include_dir_merge_list ../../shared/schedules/
+  - when: "09:00"
+    duration: "10m"
+    url: "https://intranet/standup"
+
+# Shared power schedule, but the NOC runs longer hours
 power:
+  <<: !include ../../shared/power/office-hours.yaml
   screen_on: "0 6 * * 1-5"   # Turn on early Mon-Fri at 06:00
-  screen_off: "0 22 * * 1-5"  # Turn off at 22:00
-  cec_device: 0
+  screen_off: "0 22 * * 1-5" # Turn off at 22:00
 
 # Scheduled jobs installed into native crontab
 jobs:

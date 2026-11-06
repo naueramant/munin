@@ -23,7 +23,7 @@ The installer will:
 
 > **Why `/opt/munin` instead of `/usr/local/bin` directly?** Munin usually runs as a systemd **user** service (unprivileged). The auto-updater self-replaces the running binary in place, which requires write access to the binary's directory. `/usr/local/bin` is root-owned, so the real binary lives in a user-owned directory instead; `/usr/local/bin/munin` is just a symlink to it.
 
-### Building from Source (Go 1.23+)
+### Building from Source (Go 1.26+)
 
 To build and install Munin manually:
 
@@ -94,7 +94,14 @@ mode: "local"
 screen_path: "/home/pi/screen.yaml"
 ```
 
-In Local Mode, Munin monitors `screen.yaml` for file changes. Whenever you edit the file, changes are applied live automatically.
+In Local Mode, Munin monitors `screen.yaml` and any files it includes for changes. Whenever you edit them, changes are applied live automatically.
+
+To check a configuration without applying it, run `munin lint`, or `munin config` to print it with includes and environment variables resolved:
+
+```bash
+munin lint /path/to/screen.yaml
+munin config /path/to/screen.yaml
+```
 
 ---
 

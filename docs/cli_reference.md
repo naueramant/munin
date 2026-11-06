@@ -11,6 +11,8 @@ Munin provides a command-line interface with dedicated subcommands for setup, he
 | [`munin`](#munin-screen-agent) | Runs the autonomous screen agent daemon |
 | [`munin init`](#munin-init) | Launches the interactive setup wizard |
 | [`munin doctor`](#munin-doctor) | Diagnoses dependencies, services, permissions, and configuration |
+| [`munin config`](#munin-config) | Prints the resolved screen configuration (includes and env vars applied) |
+| [`munin lint`](#munin-lint) | Checks screen configurations for errors, e.g. in CI |
 | [`munin power-check`](#munin-power-check) | Evaluates screen power schedule and edge-case status |
 | [`munin update`](#munin-update) | Checks for and installs the latest release |
 | [`munin remove`](#munin-remove) | Removes Munin service, crontab entries, and configuration |
@@ -101,6 +103,115 @@ When run with `--fix`, the doctor will automatically:
 - Enable systemd user lingering via `loginctl enable-linger` (ensuring background services start without interactive login).
 - Fix insecure SSH key permissions (sets deploy key to `0600`).
 - Enable the systemd user service if disabled.
+
+---
+
+## `munin config`
+
+Prints the screen configuration after [includes](configuration.md#including-other-files) and [environment variables](configuration.md#environment-variable-substitution) have been resolved, then validates it. Use it to debug shared files and `${VAR}` references, or as a lint step in a fleet repository's CI.
+
+```bash
+munin config [path] [flags]
+```
+
+Without a path, it prints the `screen.yaml` the agent would load: the configured subdirectory of the git checkout in git mode, or `screen_path` in local mode. The YAML goes to stdout; warnings about unset variables and validation errors go to stderr. The exit code is non-zero if the configuration cannot be loaded or is invalid.
+
+### Flags
+
+| Flag | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--effective` | bool | `false` | Print the final configuration with defaults applied (e.g. tab durations, merged `<<:` keys) instead of the resolved file |
+| `--annotate` | bool | `false` | Add comments showing which file each included part came from, and list all source files at the top |
+| `--show-secrets` | bool | `false` | Show `auth.password` values instead of `***` |
+| `--agent-config` | string | `~/.munin/agent.yaml` | Path to agent configuration used to find the screen file when no path is given |
+
+### Examples
+
+```bash
+# Show what the agent on this host will load
+munin config
+
+# Check a screen in a fleet repository checkout, with source annotations
+munin config screens/office-lobby/screen.yaml --annotate
+
+# Show the final values Munin will use, including defaults
+munin config screens/office-lobby/screen.yaml --effective
+```
+
+---
+
+## `munin lint`
+
+Checks one or more screen configurations for errors. As well as everything `munin config` validates, it catches problems that would otherwise only show up on the device:
+
+- `files[].src` paths that don't exist, and patterns that match no files
+- invalid `files[].mode` values
+- relative `css` / `js` paths that don't exist (absolute paths refer to the device and are skipped)
+- jobs without a command
+
+Unset `${VAR}` references without a default are reported as warnings, since CI usually doesn't have the device's secrets.
+
+```bash
+munin lint [path...] [flags]
+```
+
+Without a path, it checks the `screen.yaml` the agent would load. Exits non-zero if any screen has errors, or warnings with `--strict`.
+
+### Flags
+
+| Flag | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--strict` | bool | `false` | Treat warnings as errors |
+| `--agent-config` | string | `~/.munin/agent.yaml` | Path to agent configuration used to find the screen file when no path is given |
+
+### Examples
+
+```bash
+# Check every screen in a fleet repository
+munin lint screens/*/screen.yaml
+```
+
+```
+✓ screens/office-lobby/screen.yaml
+✗ screens/ops-dashboard/screen.yaml
+    error: files[0]: pattern "../../shared/file/*" matched no files
+! screens/reception/screen.yaml
+    warning: ${GRAFANA_USER} is not set and has no default
+```
+
+With `--format github`, each error and warning is also printed as a GitHub Actions annotation, so it shows up on the file in a pull request.
+
+### GitHub Action
+
+Fleet repositories can run `munin lint` on every push and pull request with the Munin action. It downloads the Munin release matching the action's version, lints the matching screen files, and annotates problems on the pull request.
+
+```yaml
+# .github/workflows/lint.yaml
+name: Lint screens
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: naueramant/munin@1.5.0
+        with:
+          paths: |
+            screens/*/screen.yaml
+            !screens/old-*/screen.yaml
+```
+
+| Input | Default | Description |
+| :--- | :--- | :--- |
+| `paths` | `**/screen.yaml` | One or more glob patterns, separated by newlines or spaces. `**` matches any depth. Patterns starting with `!` exclude their matches. A pattern that matches nothing fails the check. |
+| `strict` | `false` | Treat warnings, such as unset environment variables, as errors. Pass the variables with `env:` if you enable it. |
+| `version` | the action's version | Munin release to use, e.g. `"1.5.0"` or `"latest"`. When the action is not pinned to a release tag (e.g. `@main`), the latest release is used. |
+
+The action needs a Linux runner (amd64 or arm64) and Munin 1.5.0 or later, the first release with `munin lint`.
 
 ---
 

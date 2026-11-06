@@ -7,23 +7,26 @@ import (
 	"time"
 
 	"github.com/naueramant/munin/internal/utils"
-	yaml "gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
-// Load reads, parses, and applies sane defaults to a screen configuration file.
+// Load reads, resolves includes, parses, and applies sane defaults to a screen configuration file.
 func Load(filename string) (*Configuration, error) {
+	res, err := Resolve(filename, ResolveOptions{})
+	if err != nil {
+		return &Configuration{}, err
+	}
+	return Decode(res)
+}
+
+// Decode decodes a resolved screen configuration, applies sane defaults, and validates it.
+func Decode(res *Resolved) (*Configuration, error) {
 	c := Configuration{}
 
-	data, err := os.ReadFile(filename)
-	if err != nil {
-		return &c, fmt.Errorf("failed to load configuration file: %w", err)
-	}
-
-	data = substituteEnvVars(data)
-
-	err = yaml.Unmarshal(data, &c)
-	if err != nil {
-		return &c, fmt.Errorf("failed to unmarshal configuration file: %w", err)
+	if res.Node != nil && res.Node.Kind != 0 {
+		if err := res.Node.Decode(&c); err != nil {
+			return &c, fmt.Errorf("failed to unmarshal configuration file: %w", err)
+		}
 	}
 
 	// Sane defaults
@@ -40,7 +43,7 @@ func Load(filename string) (*Configuration, error) {
 		}
 	}
 
-	err = Validate(c)
+	err := Validate(c)
 	if err != nil {
 		return &c, fmt.Errorf("configuration file invalid: %w", err)
 	}
@@ -57,6 +60,24 @@ func Load(filename string) (*Configuration, error) {
 		}
 		if !validScheduleWhen(s.When) {
 			return &c, fmt.Errorf("configuration file invalid: schedules[%d].when %q is not a valid cron, HH:MM, or duration expression", i, s.When)
+		}
+	}
+
+	powerTimes := []struct{ key, when string }{
+		{"screen_on", c.Power.GetScreenOn()},
+		{"screen_off", c.Power.GetScreenOff()},
+		{"reboot", c.Power.GetReboot()},
+		{"power_off", c.Power.GetPowerOff()},
+	}
+	for _, p := range powerTimes {
+		if p.when != "" && !validCrontabWhen(p.when) {
+			return &c, fmt.Errorf("configuration file invalid: power.%s %q is not a valid cron, HH:MM, or @-shortcut expression", p.key, p.when)
+		}
+	}
+
+	for i, j := range c.Jobs {
+		if !validCrontabWhen(j.When) {
+			return &c, fmt.Errorf("configuration file invalid: jobs[%d].when %q is not a valid cron, HH:MM, or @-shortcut expression", i, j.When)
 		}
 	}
 

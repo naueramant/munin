@@ -1,0 +1,6 @@
+# Lunch banner shown on every screen that includes shared/schedules/
+when: "0 12 * * 1-5"
+duration: "30m"
+message: "Lunch time — back at 12:30"
+font_size: 96
+background_color: "#111111"

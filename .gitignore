@@ -18,3 +18,5 @@ config.yaml
 # Test assets
 *.js
 *.css
+!examples/**/*.js
+!examples/**/*.css

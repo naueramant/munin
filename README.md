@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/naueramant/munin/actions/workflows/ci.yaml"><img src="https://github.com/naueramant/munin/actions/workflows/ci.yaml/badge.svg" alt="CI Status"></a>
   <a href="https://github.com/naueramant/munin/releases"><img src="https://img.shields.io/github/v/release/naueramant/munin?color=00E5FF&label=release" alt="Release"></a>
-  <a href="https://golang.org"><img src="https://img.shields.io/badge/go-1.23%2B-blue?logo=go" alt="Go Version"></a>
+  <a href="https://golang.org"><img src="https://img.shields.io/badge/go-1.26%2B-blue?logo=go" alt="Go Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
   <a href="#"><img src="https://img.shields.io/badge/platform-linux%20%7C%20raspberry%20pi-orange" alt="Platform"></a>
   <a href="#"><img src="https://img.shields.io/badge/arch-arm64%20%7C%20armv7%20%7C%20x86__64-purple" alt="Architecture"></a>
@@ -50,6 +50,8 @@ Setting up wall monitors, NOC dashboards, or office displays shouldn't require f
 - 💉 **Custom CSS & JS Injection**: Hide navigation bars, apply dark mode themes, or inject custom telemetry into third-party dashboards.
 - 🔐 **HTTP Basic Auth**: Native support for password-protected internal dashboards without exposing credentials in URLs.
 - 🧩 **Environment Variable Substitution**: Reference host environment variables in any config value with `${VAR}` and `${VAR:=default}` syntax.
+- ✅ **Config Linting**: `munin lint` catches broken includes, missing files, and invalid schedules before they reach a screen, and a [GitHub Action](docs/cli_reference.md#github-action) runs it on every pull request.
+- 📎 **Shared Config Includes**: Share power schedules, takeovers, and tabs across screens with `!include` and `!include_dir_merge_list`, and inspect the result with `munin config`.
 - 🛠️ **Local Standalone Mode**: Run without Git using a local `screen.yaml` with automatic hot reload on file edits.
 - 🩺 **Self-Healing Diagnostics**: `munin doctor --fix` audits hardware permissions, GPU acceleration, and systemd services with one-click auto-repair.
 - 🚀 **Automated Updates**: Keeps itself up to date seamlessly in the background directly from GitHub Releases.
@@ -122,10 +124,12 @@ my-screens-repo/
 │   └── cafeteria-menu/
 │       └── screen.yaml          <-- Daily menu & announcements
 └── shared/
-    └── branding.css             <-- Shared company stylesheet
+    ├── branding.css             <-- Shared company stylesheet
+    └── power.yaml               <-- Power schedule included by every screen
 ```
 
 - **Version Controlled**: Review dashboard URL changes and schedule modifications via standard Pull Requests.
+- **Shared & Checked**: Pull common power schedules and takeovers into every screen with `!include`, and catch mistakes before they reach a display with `munin lint` or the [GitHub Action](docs/cli_reference.md#github-action).
 - **Offline Resilient**: Local caching ensures screens keep running uninterrupted even if the network or Wi-Fi drops.
 - **Self-Healing**: Run `munin doctor --fix` at any time to verify and repair hardware permissions, display sessions, and services.
 

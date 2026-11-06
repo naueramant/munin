@@ -1,0 +1,5 @@
+/* Shared kiosk styles */
+body {
+    background-color: #121212 !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}

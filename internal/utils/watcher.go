@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -14,27 +15,35 @@ import (
 // It watches the file's parent directory to handle in-place writes,
 // atomic renames (e.g. text editors, git sync), and file creation.
 func Watch(ctx context.Context, file string, changedFunc func()) {
-	absFile, err := filepath.Abs(file)
-	if err != nil {
-		absFile = file
-	}
-	dir := filepath.Dir(absFile)
-	targetBase := filepath.Base(absFile)
+	NewPathWatcher(ctx, changedFunc).Set([]string{file})
+}
 
-	w := watcher.New()
-	w.FilterOps(watcher.Write, watcher.Remove, watcher.Rename, watcher.Move, watcher.Create)
+// PathWatcher monitors a changing set of files and directories until the
+// context is cancelled. Files are watched through their parent directory (see
+// Watch); for a directory, any change to its direct entries counts.
+type PathWatcher struct {
+	w *watcher.Watcher
 
-	// Watch the parent directory so we catch creates, renames, and atomic saves
-	if err := w.Add(dir); err != nil {
-		slog.Warn("Watcher failed to add directory, falling back to file", "dir", dir, "error", err)
-		if err := w.Add(absFile); err != nil {
-			slog.Warn("Watcher failed to add file", "file", absFile, "error", err)
-		}
+	mu      sync.Mutex
+	files   map[string]bool // watched files
+	dirs    map[string]bool // watched directories whose every entry counts
+	watched map[string]bool // directories added to the underlying watcher
+}
+
+// NewPathWatcher starts a watcher with an empty set of paths. Use Set to
+// choose what to watch; changedFunc is called (debounced) on every change.
+func NewPathWatcher(ctx context.Context, changedFunc func()) *PathWatcher {
+	pw := &PathWatcher{
+		w:       watcher.New(),
+		files:   map[string]bool{},
+		dirs:    map[string]bool{},
+		watched: map[string]bool{},
 	}
+	pw.w.FilterOps(watcher.Write, watcher.Remove, watcher.Rename, watcher.Move, watcher.Create)
 
 	go func() {
 		<-ctx.Done()
-		w.Close()
+		pw.w.Close()
 	}()
 
 	go func() {
@@ -45,13 +54,8 @@ func Watch(ctx context.Context, file string, changedFunc func()) {
 			select {
 			case <-ctx.Done():
 				return
-			case e := <-w.Event:
-				eventTarget, _ := filepath.Abs(e.Path)
-				isTarget := eventTarget == absFile ||
-					filepath.Base(e.Path) == targetBase ||
-					(e.OldPath != "" && filepath.Base(e.OldPath) == targetBase)
-
-				if isTarget {
+			case e := <-pw.w.Event:
+				if pw.isTarget(e.Path) || (e.OldPath != "" && pw.isTarget(e.OldPath)) {
 					mu.Lock()
 					if debounceTimer != nil {
 						debounceTimer.Stop()
@@ -61,17 +65,81 @@ func Watch(ctx context.Context, file string, changedFunc func()) {
 					})
 					mu.Unlock()
 				}
-			case err := <-w.Error:
+			case err := <-pw.w.Error:
 				slog.Debug("Watcher reported error", "error", err)
-			case <-w.Closed:
+			case <-pw.w.Closed:
 				return
 			}
 		}
 	}()
 
 	go func() {
-		if err := w.Start(time.Millisecond * 200); err != nil && err != watcher.ErrWatchedFileDeleted {
+		if err := pw.w.Start(time.Millisecond * 200); err != nil && err != watcher.ErrWatchedFileDeleted {
 			slog.Debug("Watcher stopped", "error", err)
 		}
 	}()
+
+	return pw
+}
+
+// Set replaces the watched paths. Paths that are existing directories are
+// watched as directories; everything else (including files that do not exist
+// yet) is watched as a file.
+func (pw *PathWatcher) Set(paths []string) {
+	files := map[string]bool{}
+	dirs := map[string]bool{}
+	needed := map[string]bool{}
+
+	for _, p := range paths {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			abs = p
+		}
+		if info, err := os.Stat(abs); err == nil && info.IsDir() {
+			dirs[abs] = true
+			needed[abs] = true
+		} else {
+			files[abs] = true
+			needed[filepath.Dir(abs)] = true
+		}
+	}
+
+	pw.mu.Lock()
+	defer pw.mu.Unlock()
+
+	pw.files = files
+	pw.dirs = dirs
+
+	for dir := range pw.watched {
+		if !needed[dir] {
+			if err := pw.w.Remove(dir); err != nil {
+				slog.Debug("Watcher failed to remove directory", "dir", dir, "error", err)
+			}
+			delete(pw.watched, dir)
+		}
+	}
+
+	for dir := range needed {
+		if pw.watched[dir] {
+			continue
+		}
+		// Watch the parent directory so we catch creates, renames, and atomic saves
+		if err := pw.w.Add(dir); err != nil {
+			slog.Warn("Watcher failed to add directory", "dir", dir, "error", err)
+			continue
+		}
+		pw.watched[dir] = true
+	}
+}
+
+func (pw *PathWatcher) isTarget(path string) bool {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = path
+	}
+
+	pw.mu.Lock()
+	defer pw.mu.Unlock()
+
+	return pw.files[abs] || pw.dirs[abs] || pw.dirs[filepath.Dir(abs)]
 }
