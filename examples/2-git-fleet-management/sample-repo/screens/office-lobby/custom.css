@@ -1,0 +1,4 @@
+/* Hide unneeded navigation bars and footers on public TV */
+header, footer, nav, .navbar {
+    display: none !important;
+}
