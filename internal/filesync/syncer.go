@@ -3,39 +3,159 @@ package filesync
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/naueramant/munin/internal/config"
 	"github.com/naueramant/munin/internal/utils"
 )
 
-// SyncFiles copies configured files from baseDir to their destinations.
+// SyncFiles copies configured files from baseDir to their destinations. A
+// mapping's src may be a single file, a directory (copied recursively), or a
+// glob pattern (with ** for any depth); for directories and globs, dest is a
+// directory. A failing mapping does not stop the others; all errors are returned.
 func SyncFiles(baseDir string, mappings []config.FileMapping) error {
+	var errs []error
 	for _, mapping := range mappings {
-		if err := syncSingleFile(baseDir, mapping); err != nil {
+		copies, err := Expand(baseDir, mapping)
+		if err != nil {
 			slog.Error("Failed to sync file", "src", mapping.Src, "dest", mapping.Dest, "error", err)
-			return err
+			errs = append(errs, err)
+			continue
+		}
+		for _, c := range copies {
+			if err := syncSingleFile(c.Src, c.Dest, mapping.Mode); err != nil {
+				slog.Error("Failed to sync file", "src", c.Src, "dest", c.Dest, "error", err)
+				errs = append(errs, err)
+			}
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
-func syncSingleFile(baseDir string, mapping config.FileMapping) error {
-	srcPath := filepath.Join(baseDir, mapping.Src)
+// Copy is a single file copy described by a file mapping.
+type Copy struct {
+	Src  string
+	Dest string
+}
+
+// Expand turns a mapping into the individual file copies it describes, without
+// copying anything. It fails if the source does not exist or a pattern matches
+// no files.
+func Expand(baseDir string, mapping config.FileMapping) ([]Copy, error) {
+	src := mapping.Src
+	if !filepath.IsAbs(src) {
+		src = filepath.Join(baseDir, src)
+	}
+	dest := utils.ExpandHome(mapping.Dest)
+
+	if hasGlobMeta(mapping.Src) {
+		return expandGlob(src, dest, mapping.Src)
+	}
+
+	srcInfo, err := os.Stat(src)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("source %q not found", mapping.Src)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("source %q: %w", mapping.Src, err)
+	}
+
+	if !srcInfo.IsDir() {
+		// A dest ending in a slash is a directory, like cp
+		if strings.HasSuffix(mapping.Dest, "/") {
+			dest = filepath.Join(dest, filepath.Base(src))
+		}
+		return []Copy{{Src: src, Dest: dest}}, nil
+	}
+
+	var copies []Copy
+	err = filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path != src && strings.HasPrefix(d.Name(), ".") {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		copies = append(copies, Copy{Src: path, Dest: filepath.Join(dest, rel)})
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to read source directory %s: %w", src, err)
+	}
+	if len(copies) == 0 {
+		return nil, fmt.Errorf("source directory %q contains no files", mapping.Src)
+	}
+	return copies, nil
+}
+
+// expandGlob matches pattern against the filesystem. Matched files keep their
+// path relative to the part of the pattern before the first wildcard. Hidden
+// files and directories are skipped unless the pattern names them explicitly.
+func expandGlob(pattern, dest, original string) ([]Copy, error) {
+	base, rest := doublestar.SplitPattern(filepath.ToSlash(pattern))
+	base = filepath.FromSlash(base)
+
+	matches, err := doublestar.Glob(os.DirFS(base), rest, doublestar.WithFilesOnly())
+	if err != nil {
+		return nil, fmt.Errorf("invalid pattern %q: %w", original, err)
+	}
+
+	allowHidden := strings.HasPrefix(rest, ".") || strings.Contains(rest, "/.")
+
+	var copies []Copy
+	for _, m := range matches {
+		if !allowHidden && hasHiddenComponent(m) {
+			continue
+		}
+		copies = append(copies, Copy{
+			Src:  filepath.Join(base, filepath.FromSlash(m)),
+			Dest: filepath.Join(dest, filepath.FromSlash(m)),
+		})
+	}
+	if len(copies) == 0 {
+		return nil, fmt.Errorf("pattern %q matched no files", original)
+	}
+	return copies, nil
+}
+
+func hasGlobMeta(path string) bool {
+	return strings.ContainsAny(path, "*?[{")
+}
+
+func hasHiddenComponent(path string) bool {
+	for _, part := range strings.Split(path, "/") {
+		if strings.HasPrefix(part, ".") {
+			return true
+		}
+	}
+	return false
+}
+
+func syncSingleFile(srcPath, destPath, mode string) error {
 	srcInfo, err := os.Stat(srcPath)
 	if err != nil {
 		return fmt.Errorf("source file %s not found: %w", srcPath, err)
 	}
-	if srcInfo.IsDir() {
-		return fmt.Errorf("source %s is a directory, only files are supported", srcPath)
-	}
 
-	destPath := utils.ExpandHome(mapping.Dest)
 	destDir := filepath.Dir(destPath)
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return fmt.Errorf("failed to create destination directory %s: %w", destDir, err)
@@ -43,10 +163,10 @@ func syncSingleFile(baseDir string, mapping config.FileMapping) error {
 
 	// Parse desired mode if provided
 	var targetMode os.FileMode = 0644
-	if mapping.Mode != "" {
-		parsedMode, err := strconv.ParseUint(mapping.Mode, 8, 32)
+	if mode != "" {
+		parsedMode, err := strconv.ParseUint(mode, 8, 32)
 		if err != nil {
-			slog.Warn("Invalid file mode in config, using fallback 0644", "mode", mapping.Mode, "dest", mapping.Dest)
+			slog.Warn("Invalid file mode in config, using fallback 0644", "mode", mode, "dest", destPath)
 		} else {
 			targetMode = os.FileMode(parsedMode)
 		}
@@ -85,7 +205,7 @@ func syncSingleFile(baseDir string, mapping config.FileMapping) error {
 		return fmt.Errorf("failed to replace %s with %s: %w", destPath, tmpFile, err)
 	}
 
-	slog.Info("Synchronized file to host", "src", mapping.Src, "dest", destPath, "mode", fmt.Sprintf("%o", targetMode))
+	slog.Info("Synchronized file to host", "src", srcPath, "dest", destPath, "mode", fmt.Sprintf("%o", targetMode))
 	return nil
 }
 

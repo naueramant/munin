@@ -1,0 +1,4 @@
+- when: "0 16 * * 5"
+  duration: "15m"
+  message: "Happy Friday!"
+  font_size: 96

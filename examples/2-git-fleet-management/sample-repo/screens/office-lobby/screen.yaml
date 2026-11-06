@@ -8,11 +8,11 @@ tabs:
   - url: "https://calendar.google.com/calendar/embed?src=company_events"
     duration: 20
 
-# HDMI CEC screen power scheduling
-power:
-  screen_on: "0 7 * * 1-5"   # Turn on Mon-Fri at 07:00
-  screen_off: "0 19 * * 1-5" # Turn off Mon-Fri at 19:00
-  cec_device: 0
+# Company-wide takeovers (one file per schedule in shared/schedules/)
+schedules: !include_dir_merge_list ../../shared/schedules/
+
+# Shared office-hours power schedule
+power: !include ../../shared/power/office-hours.yaml
 
 # Sync shared branding asset to local filesystem
 files:

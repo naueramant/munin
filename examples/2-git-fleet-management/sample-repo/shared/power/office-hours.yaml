@@ -1,0 +1,5 @@
+# Shared office-hours power schedule, merged into each screen's `power:` block
+screen_on: "0 7 * * 1-5"   # Turn on Mon-Fri at 07:00
+screen_off: "0 19 * * 1-5" # Turn off Mon-Fri at 19:00
+reboot: "0 3 * * *"        # Nightly reboot at 03:00
+cec_device: 0

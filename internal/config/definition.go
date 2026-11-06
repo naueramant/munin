@@ -183,6 +183,11 @@ type Duration time.Duration
 // Duration returns the value as a time.Duration.
 func (d Duration) Duration() time.Duration { return time.Duration(d) }
 
+// MarshalYAML renders the value as a Go duration string (e.g. "1m30s").
+func (d Duration) MarshalYAML() (interface{}, error) {
+	return time.Duration(d).String(), nil
+}
+
 // UnmarshalYAML accepts a bare number (seconds) or a Go duration string.
 func (d *Duration) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	var i int64

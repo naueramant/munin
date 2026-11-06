@@ -1,0 +1,34 @@
+name: Munin lint
+description: Lint Munin screen configurations and annotate problems on pull requests
+author: naueramant
+branding:
+  icon: monitor
+  color: green
+
+inputs:
+  paths:
+    description: Screen files to lint. One or more glob patterns separated by newlines or spaces; prefix a pattern with ! to exclude its matches.
+    default: "**/screen.yaml"
+  strict:
+    description: Treat warnings, such as unset environment variables, as errors.
+    default: "false"
+  version:
+    description: Munin release to use (e.g. "1.5.0" or "latest"). Defaults to the release matching the action's ref, or the latest release.
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install munin
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        INPUT_VERSION: ${{ inputs.version }}
+      run: '"$GITHUB_ACTION_PATH/action/install.sh"'
+
+    - name: Lint screens
+      shell: bash
+      env:
+        INPUT_PATHS: ${{ inputs.paths }}
+        INPUT_STRICT: ${{ inputs.strict }}
+      run: '"$GITHUB_ACTION_PATH/action/run.sh"'

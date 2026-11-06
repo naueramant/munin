@@ -47,3 +47,11 @@ jobs:
 
       - name: Build
         run: go build -v .
+
+      - name: Lint example screens with the action script
+        run: action/run.sh
+        env:
+          MUNIN_BIN: ./munin
+          INPUT_PATHS: |
+            examples/**/screen.yaml
+            internal/wizard/templates/screen.yaml

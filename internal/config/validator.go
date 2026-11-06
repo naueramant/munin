@@ -75,6 +75,43 @@ func validScheduleWhen(expr string) bool {
 	return false
 }
 
+var crontabParser = cronparser.NewParser(
+	cronparser.Minute | cronparser.Hour | cronparser.Dom | cronparser.Month | cronparser.Dow,
+)
+
+// crontabDescriptors are the @-shortcuts understood by the system crontab.
+var crontabDescriptors = []string{"@reboot", "@yearly", "@annually", "@monthly", "@weekly", "@daily", "@midnight", "@hourly"}
+
+// validCrontabWhen reports whether a power or job "when" value can be written
+// to the system crontab: a 5-field cron expression, an "HH:MM" time-of-day, or
+// a crontab @-shortcut such as "@daily".
+func validCrontabWhen(expr string) bool {
+	trimmed := strings.TrimSpace(expr)
+	if trimmed == "" {
+		return false
+	}
+
+	if strings.HasPrefix(trimmed, "@") {
+		return contains(crontabDescriptors, trimmed)
+	}
+
+	if strings.Contains(trimmed, ":") && len(strings.Fields(trimmed)) == 1 {
+		parts := strings.Split(trimmed, ":")
+		if len(parts) == 2 {
+			hour, errH := strconv.Atoi(parts[0])
+			min, errM := strconv.Atoi(parts[1])
+			return errH == nil && errM == nil && hour >= 0 && hour < 24 && min >= 0 && min < 60
+		}
+		return false
+	}
+
+	if len(strings.Fields(trimmed)) != 5 {
+		return false
+	}
+	_, err := crontabParser.Parse(trimmed)
+	return err == nil
+}
+
 func contains(s []string, e string) bool {
 	for _, a := range s {
 		if a == e {

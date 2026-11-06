@@ -140,6 +140,8 @@ Controls TV power, system reboots, and active HDMI source using native `cec-util
 | `power_off` | string | `""` | Cron expression or `"HH:MM"` for shutting down the host machine (e.g. `"0 22 * * 5"`). |
 | `cec_device` | integer | `0` | CEC target device address (`0` is standard for TV). |
 
+> **Note**: Power and job times are written to the system crontab, so they also accept crontab shortcuts like `"@daily"` or `"@reboot"`. Invalid times are reported when the configuration is loaded.
+
 > **Note**: `turn_on` and `turn_off` remain fully supported as backward-compatible aliases for `screen_on` and `screen_off`.
 
 #### Native Scheduled Jobs (`jobs:`)
@@ -155,9 +157,26 @@ Copies files from the repository to the host filesystem with SHA-256 comparison 
 
 | Parameter | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `src` | string | *Required* | Source path relative to `screen.yaml` (e.g. `"scripts/healthcheck.sh"`). |
-| `dest` | string | *Required* | Absolute or home-expanded destination path (e.g. `"/home/pi/scripts/healthcheck.sh"`). |
-| `mode` | string | `"0755"` (if exec) or `"0644"` | Octal file permissions (e.g. `"0755"` or `"0644"`). |
+| `src` | string | *Required* | Source relative to `screen.yaml`: a file (e.g. `"scripts/healthcheck.sh"`), a directory (copied recursively), or a glob pattern (e.g. `"../shared/*.html"`, `"assets/**/*.svg"`). |
+| `dest` | string | *Required* | Absolute or home-expanded destination. For a single file, the destination file path (e.g. `"/home/pi/scripts/healthcheck.sh"`), or a directory if it ends with `/`. For a directory or glob `src`, the destination directory. |
+| `mode` | string | `"0755"` (if exec) or `"0644"` | Octal file permissions (e.g. `"0755"` or `"0644"`). Applies to every copied file. |
+
+Directory and glob sources work like `cp`:
+
+- `*` matches within one directory level, `**` matches any number of levels, and `?`, `[abc]` and `{a,b}` are also supported.
+- Copied files keep their path relative to the part of the pattern before the first wildcard, so `assets/**/*.svg` copies `assets/icons/x.svg` to `<dest>/icons/x.svg`.
+- Hidden files and directories (starting with `.`) are skipped unless the pattern names them explicitly (e.g. `".env*"`).
+- A pattern that matches no files is reported as an error. Other entries are still synced.
+- Files removed from the repository are **not** deleted from the host.
+
+```yaml
+files:
+  - src: "../shared/*.html"
+    dest: "/home/pi/"
+  - src: "scripts/"
+    dest: "/home/pi/scripts/"
+    mode: "0755"
+```
 
 ---
 
@@ -240,6 +259,82 @@ git:
 ```
 
 > **Tip**: Use `${VAR:=default}` to keep configs portable across hosts while still providing a sensible fallback when the variable is not set.
+
+> **Note**: Run [`munin config`](cli_reference.md#munin-config) to see the configuration with variables expanded. It warns about any `${VAR}` that is unset and has no default.
+
+---
+
+## Including Other Files
+
+A `screen.yaml` can pull content in from other YAML files, so a fleet of screens can share one power schedule, a set of company-wide takeovers, or common tabs. Includes are YAML tags, similar to Home Assistant's `!include`. They work only in `screen.yaml`, not in `agent.yaml`.
+
+| Syntax | Behavior |
+| :--- | :--- |
+| `key: !include file.yaml` | The value is replaced by the content of `file.yaml`. |
+| `- !include file.yaml` (list item) | If `file.yaml` holds a list, its items are spliced into the parent list. If it holds a single map, that map becomes one item. An empty file adds nothing. |
+| `<<: !include file.yaml` | Standard YAML merge key: the keys from `file.yaml` are merged into the surrounding map, and keys written locally win. |
+| `!include_dir_merge_list dir/` | One list built from every `*.yaml` / `*.yml` file directly in `dir/`, in filename order. Each file holds a list (items are appended) or a single map (one item). Subdirectories and hidden files are skipped. Can be used as a value or as a list item (spliced like `!include`). |
+
+### Rules
+
+- **Paths** are relative to the file that contains the `!include`, not to the working directory. Included files can include further files.
+- **Environment variables** (`${VAR}`) are substituted in every included file, and can also be used in the include path itself.
+- **Paths inside included content** (`css`, `js`, `files[].src`) are still resolved relative to the **root `screen.yaml`**, not the included file. Keep shared files at a consistent depth from your screens (e.g. `screens/<name>/screen.yaml` and `shared/`).
+- **Git mode**: includes must stay inside the cloned repository. Local mode has no such restriction.
+- **Cycles** (`a.yaml` including `b.yaml` including `a.yaml`) are reported as an error.
+- **Anchors** (`&name` / `*name`) do not cross file boundaries; use `<<: !include` instead.
+- **Reloading**: in git mode every new commit reapplies the configuration. In local mode, Munin watches `screen.yaml` and every included file and directory, so editing a shared file reloads the screen.
+
+### Example
+
+```
+screens-repo/
+├── screens/
+│   ├── office-lobby/screen.yaml
+│   └── ops-dashboard/screen.yaml
+└── shared/
+    ├── power/office-hours.yaml
+    └── schedules/
+        ├── 10-lunch.yaml
+        └── 20-friday.yaml
+```
+
+```yaml
+# shared/power/office-hours.yaml
+screen_on: "0 7 * * 1-5"
+screen_off: "0 19 * * 1-5"
+reboot: "0 3 * * *"
+```
+
+```yaml
+# shared/schedules/10-lunch.yaml
+when: "0 12 * * 1-5"
+duration: "30m"
+message: "Lunch time — back at 12:30"
+```
+
+```yaml
+# screens/ops-dashboard/screen.yaml
+syntax: v1
+
+tabs:
+  - url: "https://grafana.internal/d/fleet-metrics?kiosk"
+    duration: 60
+
+# Shared company takeovers plus one just for this screen
+schedules:
+  - !include_dir_merge_list ../../shared/schedules/
+  - when: "09:00"
+    duration: "10m"
+    url: "https://intranet/standup"
+
+# Shared power schedule, but the NOC stays on later
+power:
+  <<: !include ../../shared/power/office-hours.yaml
+  screen_off: "0 22 * * 1-5"
+```
+
+Use [`munin lint`](cli_reference.md#munin-lint) to check every screen, e.g. in CI, and [`munin config`](cli_reference.md#munin-config) to see the result: `munin config screens/ops-dashboard/screen.yaml --annotate` prints the combined file with a comment naming the source of each included part.
 
 ---
 

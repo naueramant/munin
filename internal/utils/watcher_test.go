@@ -112,3 +112,70 @@ func TestWatch_FileCreatedLater(t *testing.T) {
 		t.Errorf("expected change event when file is created later, got 0")
 	}
 }
+
+func TestPathWatcher_IncludedFileAndDirectory(t *testing.T) {
+	tmpDir := t.TempDir()
+	screen := filepath.Join(tmpDir, "screens", "lobby", "screen.yaml")
+	shared := filepath.Join(tmpDir, "shared", "power.yaml")
+	schedules := filepath.Join(tmpDir, "shared", "schedules")
+	for _, dir := range []string{filepath.Dir(screen), schedules} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, f := range []string{screen, shared} {
+		if err := os.WriteFile(f, []byte("syntax: v1\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var changeCount int32
+	pw := NewPathWatcher(ctx, func() {
+		atomic.AddInt32(&changeCount, 1)
+	})
+	pw.Set([]string{screen, shared, schedules})
+
+	time.Sleep(300 * time.Millisecond)
+
+	// Unrelated file next to the shared include must not trigger
+	if err := os.WriteFile(filepath.Join(tmpDir, "shared", "other.yaml"), []byte("x: 1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(600 * time.Millisecond)
+	if got := atomic.LoadInt32(&changeCount); got != 0 {
+		t.Fatalf("expected no change events for unrelated file, got %d", got)
+	}
+
+	// Modifying the included file triggers
+	if err := os.WriteFile(shared, []byte("screen_on: \"07:00\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(600 * time.Millisecond)
+	if got := atomic.LoadInt32(&changeCount); got == 0 {
+		t.Fatalf("expected change event for included file, got 0")
+	}
+
+	// Adding a file to an included directory triggers
+	before := atomic.LoadInt32(&changeCount)
+	if err := os.WriteFile(filepath.Join(schedules, "lunch.yaml"), []byte("[]\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(600 * time.Millisecond)
+	if got := atomic.LoadInt32(&changeCount); got <= before {
+		t.Fatalf("expected change event for new file in included directory")
+	}
+
+	// After dropping the include from the set, changes are ignored
+	pw.Set([]string{screen})
+	before = atomic.LoadInt32(&changeCount)
+	if err := os.WriteFile(shared, []byte("screen_on: \"08:00\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(600 * time.Millisecond)
+	if got := atomic.LoadInt32(&changeCount); got != before {
+		t.Fatalf("expected no change events after include removed, got %d new", got-before)
+	}
+}

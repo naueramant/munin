@@ -50,6 +50,8 @@ Setting up wall monitors, NOC dashboards, or office displays shouldn't require f
 - 💉 **Custom CSS & JS Injection**: Hide navigation bars, apply dark mode themes, or inject custom telemetry into third-party dashboards.
 - 🔐 **HTTP Basic Auth**: Native support for password-protected internal dashboards without exposing credentials in URLs.
 - 🧩 **Environment Variable Substitution**: Reference host environment variables in any config value with `${VAR}` and `${VAR:=default}` syntax.
+- ✅ **Config Linting**: `munin lint` catches broken includes, missing files, and invalid schedules before they reach a screen, and a [GitHub Action](docs/cli_reference.md#github-action) runs it on every pull request.
+- 📎 **Shared Config Includes**: Share power schedules, takeovers, and tabs across screens with `!include` and `!include_dir_merge_list`, and inspect the result with `munin config`.
 - 🛠️ **Local Standalone Mode**: Run without Git using a local `screen.yaml` with automatic hot reload on file edits.
 - 🩺 **Self-Healing Diagnostics**: `munin doctor --fix` audits hardware permissions, GPU acceleration, and systemd services with one-click auto-repair.
 - 🚀 **Automated Updates**: Keeps itself up to date seamlessly in the background directly from GitHub Releases.

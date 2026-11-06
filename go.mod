@@ -3,6 +3,7 @@ module github.com/naueramant/munin
 go 1.26
 
 require (
+	github.com/bmatcuk/doublestar/v4 v4.8.1
 	github.com/chromedp/cdproto v0.0.0-20260804232424-e85f50dbfd32
 	github.com/chromedp/chromedp v0.16.0
 	github.com/go-git/go-git/v5 v5.19.2
@@ -12,6 +13,7 @@ require (
 	golang.org/x/crypto v0.55.0
 	gopkg.in/go-playground/validator.v9 v9.31.0
 	gopkg.in/yaml.v2 v2.4.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

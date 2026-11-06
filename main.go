@@ -22,6 +22,7 @@ import (
 	"github.com/naueramant/munin/internal/doctor"
 	"github.com/naueramant/munin/internal/filesync"
 	"github.com/naueramant/munin/internal/git"
+	"github.com/naueramant/munin/internal/lint"
 	"github.com/naueramant/munin/internal/updater"
 	"github.com/naueramant/munin/internal/utils"
 	"github.com/naueramant/munin/internal/wizard"
@@ -58,6 +59,12 @@ func main() {
 		case "doctor":
 			runDoctorCommand(os.Args[2:])
 			return
+		case "config":
+			runConfigCommand(os.Args[2:])
+			return
+		case "lint":
+			runLintCommand(os.Args[2:])
+			return
 		case "power-check":
 			runPowerCheckCommand(os.Args[2:])
 			return
@@ -73,6 +80,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  munin [flags]               Run screen agent\n")
 		fmt.Fprintf(os.Stderr, "  munin init                  Launch interactive setup wizard\n")
 		fmt.Fprintf(os.Stderr, "  munin doctor [options]      Diagnose dependencies, systemd services, permissions, and configuration\n")
+		fmt.Fprintf(os.Stderr, "  munin config [path] [opts]  Print the resolved screen configuration (includes and env vars applied)\n")
+		fmt.Fprintf(os.Stderr, "  munin lint [path...] [opts] Check screen configurations for errors\n")
 		fmt.Fprintf(os.Stderr, "  munin power-check [options] Check screen power schedule and edge case state\n")
 		fmt.Fprintf(os.Stderr, "  munin update [options]      Check for and install the latest release\n")
 		fmt.Fprintf(os.Stderr, "  munin remove [options]      Remove Munin service, crontab, and configuration\n\n")
@@ -225,14 +234,17 @@ func runLocalMode(ctx context.Context, screenPath string, agentCfg *config.Agent
 		chromiumFlags = agentCfg.Display.ChromiumFlags
 	}
 
-	applyConfig(screenPath, baseDir, chromiumFlags)
-
-	// Watch screen.yaml for changes
-	slog.Debug("Watching local configuration for changes", "file", screenPath)
-	utils.Watch(ctx, screenPath, func() {
+	// Watch screen.yaml and every file it includes for changes
+	var pw *utils.PathWatcher
+	pw = utils.NewPathWatcher(ctx, func() {
 		slog.Info("Local screen configuration modified, reloading", "path", screenPath)
-		applyConfig(screenPath, baseDir, chromiumFlags)
+		sources := applyConfig(screenPath, baseDir, "", chromiumFlags)
+		pw.Set(append([]string{screenPath}, sources...))
 	})
+
+	sources := applyConfig(screenPath, baseDir, "", chromiumFlags)
+	slog.Debug("Watching local configuration for changes", "files", sources)
+	pw.Set(append([]string{screenPath}, sources...))
 
 	<-ctx.Done()
 }
@@ -251,12 +263,9 @@ func runGitMode(ctx context.Context, agentCfg *config.AgentConfig) {
 		}
 
 		if changed && subdirPath != "" {
-			screenFile := filepath.Join(subdirPath, "screen.yaml")
-			if _, err := os.Stat(screenFile); err != nil {
-				screenFile = filepath.Join(subdirPath, "screen.yml")
-			}
+			screenFile := findScreenFile(subdirPath)
 			slog.Info("Applying updated configuration from Git", "file", screenFile)
-			applyConfig(screenFile, subdirPath, agentCfg.Display.ChromiumFlags)
+			applyConfig(screenFile, subdirPath, agentCfg.Git.TargetDir, agentCfg.Display.ChromiumFlags)
 		}
 	}
 
@@ -280,13 +289,33 @@ func runGitMode(ctx context.Context, agentCfg *config.AgentConfig) {
 	}
 }
 
-func applyConfig(screenFile, baseDir string, extraChromiumFlags []string) {
+// findScreenFile returns screen.yaml in dir, falling back to screen.yml.
+func findScreenFile(dir string) string {
+	screenFile := filepath.Join(dir, "screen.yaml")
+	if _, err := os.Stat(screenFile); err != nil {
+		screenFile = filepath.Join(dir, "screen.yml")
+	}
+	return screenFile
+}
+
+// applyConfig loads and applies a screen configuration. Includes must stay
+// inside root when it is set. It returns every file and directory the
+// configuration was read from, so callers can watch them.
+func applyConfig(screenFile, baseDir, root string, extraChromiumFlags []string) []string {
 	bmLock.Lock()
 	defer bmLock.Unlock()
 
-	c, err := config.Load(screenFile)
+	res, err := config.Resolve(screenFile, config.ResolveOptions{Root: root})
+	for _, name := range res.UnsetVars {
+		slog.Warn("Screen configuration references an unset variable with no default", "variable", name)
+	}
+
+	var c *config.Configuration
+	if err == nil {
+		c, err = config.Decode(res)
+	}
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) || os.IsNotExist(err) || strings.Contains(err.Error(), "no such file or directory") {
+		if _, statErr := os.Stat(screenFile); errors.Is(statErr, os.ErrNotExist) {
 			slog.Warn("Screen configuration file not found", "file", screenFile)
 			c = &config.Configuration{Syntax: ""}
 		} else {
@@ -295,7 +324,7 @@ func applyConfig(screenFile, baseDir string, extraChromiumFlags []string) {
 				bm = browser.NewBrowserManager(&config.Configuration{Syntax: ""}, as, baseDir, extraChromiumFlags...)
 			}
 			bm.ShowError("Invalid Screen Configuration", err.Error())
-			return
+			return res.Sources
 		}
 	}
 
@@ -325,6 +354,8 @@ func applyConfig(screenFile, baseDir string, extraChromiumFlags []string) {
 	} else {
 		bm.ApplyConfig(c)
 	}
+
+	return res.Sources
 }
 
 func stopBrowser() {
@@ -420,6 +451,197 @@ func runPowerCheckCommand(args []string) {
 			fmt.Println("[✓] Sent CEC standby command successfully.")
 		}
 	}
+}
+
+func runConfigCommand(args []string) {
+	fs := flag.NewFlagSet("config", flag.ExitOnError)
+	flagEffective := fs.Bool("effective", false, "print the final configuration with defaults applied")
+	flagAnnotate := fs.Bool("annotate", false, "add comments showing which file included content came from")
+	flagShowSecrets := fs.Bool("show-secrets", false, "do not mask auth passwords")
+	flagAgentCfg := fs.String("agent-config", "", "path to agent.yaml (defaults to ~/.munin/agent.yaml)")
+
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: munin config [path] [options]\n\n")
+		fmt.Fprintf(os.Stderr, "Print the screen configuration after includes and environment variables are resolved.\n")
+		fmt.Fprintf(os.Stderr, "Without a path, prints the screen.yaml the agent would load. Exits non-zero if the\n")
+		fmt.Fprintf(os.Stderr, "configuration is invalid.\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fmt.Fprintf(os.Stderr, "      --effective     Print the final configuration with defaults applied\n")
+		fmt.Fprintf(os.Stderr, "      --annotate      Add comments showing which file included content came from\n")
+		fmt.Fprintf(os.Stderr, "      --show-secrets  Do not mask auth passwords\n")
+		fmt.Fprintf(os.Stderr, "      --agent-config  Path to agent.yaml (defaults to ~/.munin/agent.yaml)\n")
+		fmt.Fprintf(os.Stderr, "  -h, --help          Show this help message\n")
+	}
+
+	paths, err := parseInterspersed(fs, args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing config flags: %v\n", err)
+		os.Exit(1)
+	}
+	if len(paths) > 1 {
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	var screenPath, root string
+	if len(paths) == 1 {
+		screenPath = utils.ExpandHome(paths[0])
+	} else {
+		screenPath, root = agentScreenTarget(*flagAgentCfg)
+	}
+
+	res, err := config.Resolve(screenPath, config.ResolveOptions{Root: root, Annotate: *flagAnnotate})
+	for _, name := range res.UnsetVars {
+		fmt.Fprintf(os.Stderr, "Warning: ${%s} is not set and has no default\n", name)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	cfg, decodeErr := config.Decode(res)
+
+	var out interface{} = res.Node
+	if *flagEffective {
+		if decodeErr != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", decodeErr)
+			os.Exit(1)
+		}
+		if !*flagShowSecrets {
+			cfg.MaskSecrets()
+		}
+		out = cfg
+	} else if !*flagShowSecrets {
+		config.MaskSecrets(res.Node)
+	}
+
+	if res.Node.Kind != 0 || *flagEffective {
+		if err := config.EncodeYAML(os.Stdout, out); err != nil {
+			fmt.Fprintf(os.Stderr, "Error encoding configuration: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	if decodeErr != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", decodeErr)
+		os.Exit(1)
+	}
+}
+
+// parseInterspersed parses flags that may appear before, between, or after
+// positional arguments, and returns the positional arguments.
+func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
+	var positional []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		if fs.NArg() == 0 {
+			return positional, nil
+		}
+		positional = append(positional, fs.Arg(0))
+		args = fs.Args()[1:]
+	}
+}
+
+// agentScreenTarget returns the screen.yaml the agent would load, and the
+// directory includes must stay inside (the git checkout in git mode).
+func agentScreenTarget(agentConfigPath string) (string, string) {
+	screenPath := "screen.yaml"
+	root := ""
+	if agentCfg, err := config.LoadAgentConfig(agentConfigPath); err == nil && agentCfg != nil {
+		if agentCfg.Mode == "git" && agentCfg.Git.Repo != "" {
+			screenPath = findScreenFile(filepath.Join(agentCfg.Git.TargetDir, agentCfg.Git.Subdir))
+			root = agentCfg.Git.TargetDir
+		} else if agentCfg.ScreenPath != "" {
+			screenPath = agentCfg.ScreenPath
+		}
+	}
+	return utils.ExpandHome(screenPath), root
+}
+
+func runLintCommand(args []string) {
+	fs := flag.NewFlagSet("lint", flag.ExitOnError)
+	flagStrict := fs.Bool("strict", false, "treat warnings as errors")
+	flagFormat := fs.String("format", "text", "output format: text or github")
+	flagAgentCfg := fs.String("agent-config", "", "path to agent.yaml (defaults to ~/.munin/agent.yaml)")
+
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: munin lint [path...] [options]\n\n")
+		fmt.Fprintf(os.Stderr, "Check screen configurations for errors, including problems that would otherwise only\n")
+		fmt.Fprintf(os.Stderr, "show up on the device. Without a path, checks the screen.yaml the agent would load.\n")
+		fmt.Fprintf(os.Stderr, "Exits non-zero if any screen has errors.\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fmt.Fprintf(os.Stderr, "      --strict        Treat warnings as errors\n")
+		fmt.Fprintf(os.Stderr, "      --format        Output format: text (default) or github (adds GitHub Actions annotations)\n")
+		fmt.Fprintf(os.Stderr, "      --agent-config  Path to agent.yaml (defaults to ~/.munin/agent.yaml)\n")
+		fmt.Fprintf(os.Stderr, "  -h, --help          Show this help message\n")
+	}
+
+	paths, err := parseInterspersed(fs, args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing lint flags: %v\n", err)
+		os.Exit(1)
+	}
+	if *flagFormat != "text" && *flagFormat != "github" {
+		fmt.Fprintf(os.Stderr, "Error: unknown format %q (supported: text, github)\n", *flagFormat)
+		os.Exit(1)
+	}
+
+	type target struct{ path, root string }
+	var targets []target
+	if len(paths) == 0 {
+		path, root := agentScreenTarget(*flagAgentCfg)
+		targets = append(targets, target{path, root})
+	}
+	for _, p := range paths {
+		targets = append(targets, target{utils.ExpandHome(p), ""})
+	}
+
+	failed := false
+	for _, t := range targets {
+		r := lint.Screen(t.path, t.root)
+		switch {
+		case len(r.Errors) > 0:
+			fmt.Printf("✗ %s\n", r.Path)
+			failed = true
+		case len(r.Warnings) > 0:
+			fmt.Printf("! %s\n", r.Path)
+			failed = failed || *flagStrict
+		default:
+			fmt.Printf("✓ %s\n", r.Path)
+		}
+		for _, e := range r.Errors {
+			fmt.Printf("    error: %s\n", e)
+		}
+		for _, w := range r.Warnings {
+			fmt.Printf("    warning: %s\n", w)
+		}
+
+		if *flagFormat == "github" {
+			warningLevel := "warning"
+			if *flagStrict {
+				warningLevel = "error"
+			}
+			for _, e := range r.Errors {
+				fmt.Println(githubAnnotation("error", r.Path, e))
+			}
+			for _, w := range r.Warnings {
+				fmt.Println(githubAnnotation(warningLevel, r.Path, w))
+			}
+		}
+	}
+
+	if failed {
+		os.Exit(1)
+	}
+}
+
+// githubAnnotation formats a GitHub Actions workflow command that annotates file.
+func githubAnnotation(level, file, message string) string {
+	escapeData := strings.NewReplacer("%", "%25", "\r", "%0D", "\n", "%0A")
+	escapeProperty := strings.NewReplacer("%", "%25", "\r", "%0D", "\n", "%0A", ":", "%3A", ",", "%2C")
+	return fmt.Sprintf("::%s file=%s,title=munin lint::%s", level, escapeProperty.Replace(filepath.ToSlash(file)), escapeData.Replace(message))
 }
 
 func runDoctorCommand(args []string) {
