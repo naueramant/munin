@@ -312,7 +312,7 @@ type Options struct {
 
 // FileMapping defines a file to copy from the repo/config dir to the local filesystem.
 type FileMapping struct {
-	Src  string `yaml:"src" validate:"required"`  // Path relative to screen.yaml directory
-	Dest string `yaml:"dest" validate:"required"` // Absolute destination path on local machine (supports ~)
+	Src  string `yaml:"src" validate:"required"`  // File, directory, or glob pattern relative to screen.yaml directory
+	Dest string `yaml:"dest" validate:"required"` // Absolute destination on local machine (supports ~); a directory for directory/glob sources
 	Mode string `yaml:"mode,omitempty"`           // Optional chmod octal mode, e.g. "0755" or "0644"
 }

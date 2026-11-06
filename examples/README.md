@@ -20,5 +20,5 @@ This directory contains production-ready reference configurations and architectu
   - `sample-repo/`: Complete reference Git repository showing how to organize screens:
     - `screens/office-lobby/`: Reception display with rotating dashboard, events calendar, and custom CSS.
     - `screens/ops-dashboard/`: NOC display with 60s Grafana rotation, Datadog status, and healthcheck script synchronization.
-    - `shared/`: Shared stylesheets (`common.css`) and corporate branding (`logo.svg`).
+    - `shared/`: Corporate branding (`logo.svg`), a power schedule included by both screens (`power/office-hours.yaml`), and takeovers included with `!include_dir_merge_list` (`schedules/`).
 - **Documentation**: See [Git Synchronization & Fleet Management](../docs/git_sync.md).

@@ -21,13 +21,35 @@ my-screens-repo/
 │       └── screen.yaml
 └── shared/
     ├── common.css           # Global theme shared across displays
-    └── logo.svg             # Corporate branding asset
+    ├── logo.svg             # Corporate branding asset
+    ├── power.yaml           # Power schedule included by every screen
+    └── schedules.yaml       # Takeovers included by every screen
 ```
 
 Each Raspberry Pi points to the same repository URL, but specifies its assigned `subdir` in its host `~/.munin/agent.yaml`:
 - Lobby Pi: `subdir: "screens/office-lobby"`
 - NOC Pi: `subdir: "screens/ops-dashboard"`
 - Room A Pi: `subdir: "screens/meeting-room-a"`
+
+### Sharing Configuration Between Screens
+
+Settings used by several screens, such as a power schedule or company-wide takeovers, can live in `shared/` and be pulled into each `screen.yaml` with `!include`:
+
+```yaml
+# screens/office-lobby/screen.yaml
+schedules: !include ../../shared/schedules.yaml
+power: !include ../../shared/power.yaml
+```
+
+Includes must stay inside the repository. See [Including Other Files](configuration.md#including-other-files) for list splicing, `<<:` merges, and directory includes.
+
+### Checking Changes Before They Reach a Screen
+
+Run [`munin lint`](cli_reference.md#munin-lint) on all screens before pushing, or let the [GitHub Action](cli_reference.md#github-action) run it on every pull request:
+
+```bash
+munin lint screens/*/screen.yaml
+```
 
 ---
 
@@ -80,7 +102,7 @@ git:
    - According to `git.schedule` (defaults to `* * * * *`, checking every minute), Munin performs a lightweight `git fetch origin <branch> --depth 1`.
    - If a new commit is detected:
      - The local worktree is atomically updated using `git reset --hard origin/<branch>`.
-     - Files declared under `files:` in `screen.yaml` are compared via SHA-256 and updated only if modified.
+     - Files declared under `files:` in `screen.yaml` (single files, directories, or glob patterns) are compared via SHA-256 and updated only if modified.
      - Crontab jobs and HDMI CEC timers are re-calculated and updated in place.
      - Browser tabs and injected stylesheets/scripts are updated live without rebooting the browser process.
 
